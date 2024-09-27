@@ -9,6 +9,7 @@ import { Server } from "socket.io";
 
 const allRPI = {};
 const allData = {}; // To store all test data
+const runningTests = [];
 
 // allData format:
 // {
@@ -39,7 +40,6 @@ io.on("connection", (socket) => {
         const env = data.env;
         socket.join("rpi");
         allRPI[id] = env;
-        console.log(allRPI);
         console.log(`RPI ${socket.id} has joined. ENV: ${env}`);
 
         io.to("client").emit("status_rpis", allRPI);
@@ -51,15 +51,18 @@ io.on("connection", (socket) => {
 
         // Send the current allData to the client
         io.to("client").emit("status_rpis", allRPI);
+        io.to("client").emit("status_tests", runningTests);
         io.to("client").emit("all_data", allData);
     });
 
     socket.on("disconnect", () => {
         if (socket.id in allRPI) {
+            console.log(`RPI ${allRPI[socket.id]} disconnected`);
             delete allRPI[socket.id];
             io.to("client").emit("status_rpis", allRPI);
+        } else {
+            console.log(`Client ${socket.id} has disconnected`);
         }
-        console.log(`User ${socket.id} disconnected`);
     });
 
     socket.on("disconnecting", () => {
@@ -83,12 +86,25 @@ io.on("connection", (socket) => {
             data: {},
         };
         console.log(`Starting test "${testName}"`);
+        runningTests.push(testName);
         socket.to("rpi").emit("start_test", testName);
     });
 
-    socket.on("stop_test", (data) => {
-        console.log(`Stopping test "${data.testName}"`);
-        socket.to("rpi").emit("stop_test", data.testName);
+    socket.on("stop_test_server", (data) => {
+        const testName = data.testName;
+        console.log(`Stopping test "${testName}"`);
+        io.to("rpi").emit("stop_test_rpi", testName);
+
+        const idx = runningTests.indexOf(testName);
+        if (idx > -1) {
+            runningTests.splice(idx, 1);
+        }
+
+        io.to("client").emit("status_tests", runningTests);
+    });
+
+    socket.on("get_tests", () => {
+        io.to("client").emit("status_tests", runningTests);
     });
 
     socket.on("test_data", (data) => {

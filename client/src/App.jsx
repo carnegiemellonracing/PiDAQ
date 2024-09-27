@@ -19,16 +19,20 @@ function App() {
     const [testName, setTestName] = useState("");
     const [allData, setAllData] = useState({}); // List of tests with info and sender data
     const [showTable, setShowTable] = useState({}); // To track graph visibility for each sender in each test
+    const [allTests, setAllTests] = useState([]);
 
     useEffect(() => {
         socket.on("connect", () => {
             socket.emit("join_client", {});
             setRoom("client");
-            socket.emit("get_rpis", {});
         });
 
         socket.on("status_rpis", (data) => {
             setAllRPI(data);
+        });
+
+        socket.on("status_tests", (data) => {
+            setAllTests(data);
         });
 
         socket.on("all_data", (data) => {
@@ -61,96 +65,123 @@ function App() {
                     className="btn"
                     onClick={() => {
                         socket.emit("start_test", { testName });
+                        socket.emit("get_tests");
                     }}
                 >
                     Start Test
                 </button>
-                <button
-                    className="btn"
-                    onClick={() => {
-                        socket.emit("stop_test", { testName });
-                    }}
-                >
-                    Stop Test
-                </button>
             </div>
 
             <div className="info-section">
-                <h1>All RPIs:</h1>
-                {Object.keys(allRPI).length !== 0 && (
-                    <ul className="rpi-list">
-                        {Object.keys(allRPI).map((key, idx) => (
-                            <li key={idx} className="rpi-item">
-                                {allRPI[key]}
-                            </li>
-                        ))}
-                    </ul>
+                {allTests.length !== 0 ? (
+                    <>
+                        <h2>All Tests Running:</h2>
+                        <ul className="test-list list">
+                            {allTests.map((testName) => (
+                                <li key={testName} className="list-item">
+                                    <p>{testName}</p>
+                                    <button
+                                        className="btn delete-button"
+                                        onClick={() => {
+                                            socket.emit("stop_test_server", {
+                                                testName,
+                                            });
+                                        }}
+                                        aria-label={`Delete ${testName}`}
+                                    >
+                                        ✖
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </>
+                ) : (
+                    <h2>No Tests Running</h2>
                 )}
 
-                {room ? <h1>Room Code: {room}</h1> : <h1>Not in a Room</h1>}
+                {Object.keys(allRPI).length !== 0 ? (
+                    <>
+                        <h2>All RPIs Connected:</h2>
+                        <ul className="rpi-list list">
+                            {Object.keys(allRPI).map((key, idx) => (
+                                <li key={idx} className="list-item">
+                                    {allRPI[key]}
+                                </li>
+                            ))}
+                        </ul>
+                    </>
+                ) : (
+                    <h2>No RPIs connected</h2>
+                )}
+
+                {room ? <h2>Room Code: {room}</h2> : <h2>Not in a Room</h2>}
 
                 {Object.keys(allData).length !== 0 &&
-                    Object.keys(allData).map((testKey, idx) => (
-                        <div className="test-container" key={idx}>
-                            <h3>Test Name: {allData[testKey].info.name}</h3>
-                            <h4>
-                                Start Time:{" "}
-                                {new Date(
-                                    allData[testKey].info.time
-                                ).toLocaleString()}
-                            </h4>
-                            <h4>
-                                Senders:{" "}
-                                {allData[testKey].info.senders.join(", ")}
-                            </h4>
+                    Object.keys(allData)
+                        .toReversed()
+                        .map((testKey, idx) => (
+                            <div className="test-container" key={idx}>
+                                <h3>Test Name: {allData[testKey].info.name}</h3>
+                                <h4>
+                                    Start Time:{" "}
+                                    {new Date(
+                                        allData[testKey].info.time
+                                    ).toLocaleString()}
+                                </h4>
+                                <h4>
+                                    Senders:{" "}
+                                    {allData[testKey].info.senders.join(", ")}
+                                </h4>
 
-                            <div className="sender-container">
-                                {allData[testKey].info.senders.map(
-                                    (senderKey) => (
-                                        <div
-                                            className="sender-box"
-                                            key={senderKey}
-                                        >
-                                            <h4>Sender: {senderKey}</h4>
-                                            <button
-                                                className="btn toggle-graph-btn"
-                                                onClick={() =>
-                                                    toggleGraph(
-                                                        testKey,
-                                                        senderKey
-                                                    )
-                                                }
+                                <div className="sender-container">
+                                    {allData[testKey].info.senders.map(
+                                        (senderKey) => (
+                                            <div
+                                                className="sender-box"
+                                                key={senderKey}
                                             >
-                                                {showTable[testKey] &&
-                                                showTable[testKey][senderKey]
-                                                    ? "Show Graph"
-                                                    : "Show Table"}
-                                            </button>
+                                                <h4>Sender: {senderKey}</h4>
+                                                <button
+                                                    className="btn toggle-graph-btn"
+                                                    onClick={() =>
+                                                        toggleGraph(
+                                                            testKey,
+                                                            senderKey
+                                                        )
+                                                    }
+                                                >
+                                                    {showTable[testKey] &&
+                                                    showTable[testKey][
+                                                        senderKey
+                                                    ]
+                                                        ? "Show Graph"
+                                                        : "Show Table"}
+                                                </button>
 
-                                            {showTable[testKey] &&
-                                            showTable[testKey][senderKey] ? (
-                                                <DataTable
-                                                    data={
-                                                        allData[testKey].data[
-                                                            senderKey
-                                                        ]
-                                                    }
-                                                />
-                                            ) : (
-                                                <DataGraph
-                                                    data={
-                                                        allData[testKey].data[
-                                                            senderKey
-                                                        ]
-                                                    }
-                                                />
-                                            )}
-                                        </div>
-                                    )
-                                )}
+                                                {showTable[testKey] &&
+                                                showTable[testKey][
+                                                    senderKey
+                                                ] ? (
+                                                    <DataTable
+                                                        data={
+                                                            allData[testKey]
+                                                                .data[senderKey]
+                                                        }
+                                                    />
+                                                ) : (
+                                                    <DataGraph
+                                                        data={
+                                                            allData[testKey]
+                                                                .data[senderKey]
+                                                        }
+                                                    />
+                                                )}
+                                            </div>
+                                        )
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
             </div>
         </div>
     );
