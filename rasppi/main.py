@@ -4,16 +4,14 @@ import time
 sio = socketio.Client()
 
 running_tests = []
+rpiID = random.randint(1,100) # replace with env variables
+
+freq = 1000 #sometimes miss the first few data points with high freq. otherwise get all values (tested till 1000Hz)
 
 @sio.event
 def connect():
-  sio.emit('join_room',{"room":"rasppi","currRoom":""})
+  sio.emit('join_rpi',{"env":f"rpi{rpiID}"})
   print("connection established")
-
-
-@sio.on('message')
-def message(data):
-    print('Received data: ', data)
 
 @sio.event
 def connect_error(data):
@@ -37,16 +35,17 @@ def stop_test(test_name):
     print(f"stopped test \"{test_name}\"")
 
 def run_test(test_name):
+  time.sleep(0.05) 
   idv = 0
   dv = 0
-  while idv < 100 and test_name in running_tests:
-    dv = random.randint(1, 101)
+  while idv < 1000 and test_name in running_tests:
+    dv = random.randint(1, 100)
     idv += 1
     print(f"data: {idv, dv}, sender: {sio.sid}")
     
     
-    sio.emit("test_data",{"testName":test_name, "data":[idv, dv], "sender":sio.sid})
-    time.sleep(0.5)
+    sio.emit("test_data",{"testName":test_name, "data":[idv, dv], })
+    time.sleep(1/freq)
 
 sio.connect('http://127.0.0.1:3001')
 sio.wait()

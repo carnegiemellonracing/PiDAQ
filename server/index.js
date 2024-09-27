@@ -8,6 +8,8 @@ app.use(cors());
 
 import { Server } from "socket.io";
 
+const allRPI = {};
+
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
@@ -17,34 +19,32 @@ const io = new Server(server, {
 });
 
 io.on("connection", (socket) => {
-    console.log(`User Connected ${socket.id}`);
+    socket.on("join_rpi", (data) => {
+        const id = socket.id;
+        const env = data.env;
+        socket.join("rpi");
+        allRPI[id] = env;
+        console.log(allRPI);
+        console.log(`RPI ${socket.id} has joined. ENV: ${env}`);
 
-    socket.on("message", (data) => {
-        socket.to(data.room).emit("receive_message", data);
+        io.to("client").emit("status_rpis", allRPI);
     });
 
-    socket.on("join_room", (data) => {
-        if (data.currRoom) {
-            socket.leave(data.currRoom);
-            if (data.currRoom !== data.room) {
-                console.log(
-                    `User joined room "${data.room}" and left "${data.currRoom}"`
-                );
-            }
-        } else {
-            console.log(`User joined room "${data.room}"`);
-        }
-        // can add logic for if rasppi is connected, send message to client
-        socket.join(data.room);
+    socket.on("join_client", (data) => {
+        socket.join("client");
+        console.log(`Client ${socket.id} has joined`);
     });
 
     socket.on("disconnect", () => {
+        if (socket.id in allRPI) {
+            delete allRPI[socket.id];
+            io.to("client").emit("status_rpis", allRPI);
+        }
         console.log(`User ${socket.id} disconnected`);
     });
 
     socket.on("disconnecting", () => {
         // add logic for if rasppi is disconnecting, send message to client
-
         console.log(`User ${socket.id} disconnecting`);
     });
 
@@ -55,16 +55,20 @@ io.on("connection", (socket) => {
 
     socket.on("start_test", (data) => {
         console.log(`Starting test "${data.testName}"`);
-        socket.to("rasppi").emit("start_test", data.testName);
+        socket.to("rpi").emit("start_test", data.testName);
     });
 
     socket.on("stop_test", (data) => {
         console.log(`Stopping test "${data.testName}"`);
-        socket.to("rasppi").emit("stop_test", data.testName);
+        socket.to("rpi").emit("stop_test", data.testName);
     });
 
     socket.on("test_data", (data) => {
-        socket.to("client").emit("test_data", data);
+        socket.to("client").emit("test_data", { ...data, sender: socket.id });
+    });
+
+    socket.on("get_rpis", (data) => {
+        io.to("client").emit("status_rpis", allRPI);
     });
 });
 
