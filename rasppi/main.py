@@ -19,7 +19,6 @@ def connect():
 def connect_error(data):
     print("The connection failed")
 
-  
 @sio.event
 def disconnect():
     print("Disconnected from server")

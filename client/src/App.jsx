@@ -80,17 +80,7 @@ function App() {
                             {allTests.map((testName) => (
                                 <li key={testName} className="list-item">
                                     <p>{testName}</p>
-                                    <button
-                                        className="btn delete-button"
-                                        onClick={() => {
-                                            socket.emit("stop_test_server", {
-                                                testName,
-                                            });
-                                        }}
-                                        aria-label={`Delete ${testName}`}
-                                    >
-                                        ✖
-                                    </button>
+                                    <StopTestBtn testName={testName} />
                                 </li>
                             ))}
                         </ul>
@@ -235,5 +225,31 @@ function DataGraph({ data }) {
                 </LineChart>
             </ResponsiveContainer>
         </>
+    );
+}
+
+function StopTestBtn({ testName }) {
+    return (
+        <button
+            className="btn delete-button"
+            id={`stop${testName}`}
+            onClick={(e) => {
+                let confirm = e.target.getAttribute("data-confirm");
+                console.log();
+                if (confirm === "false") {
+                    e.target.setAttribute("data-confirm", "true");
+                    e.target.innerHTML = "Confirm?";
+                    e.target.style.backgroundColor = "#FB618D";
+                } else {
+                    socket.emit("stop_test_server", {
+                        testName,
+                    });
+                }
+            }}
+            data-confirm={"false"}
+            aria-label={`Delete ${testName}`}
+        >
+            Stop Test
+        </button>
     );
 }

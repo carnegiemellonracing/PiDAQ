@@ -37,11 +37,11 @@ body {
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    transition: background-color 0.3s;
+    transition: filter 0.2s;
 }
 
 .btn:hover {
-    background-color: #1976d2;
+    filter: brightness(0.9);
 }
 
 .input-field {
@@ -125,10 +125,6 @@ ul {
 .sender-box .btn {
     background-color: #03dac6;
     margin-top: 10px;
-}
-
-.sender-box .btn:hover {
-    background-color: #00bfa5;
 }
 
 .data-table {
