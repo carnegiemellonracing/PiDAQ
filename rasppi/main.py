@@ -84,7 +84,7 @@ def start_test(test_name):
     testStateManager.set_name(test_name)
 
 
-@sio.on("stop_test")
+@sio.on("stop_test_rpi")
 def stop_test(test_name):
     print(f'stopped test "{test_name}"')
     testStateManager.set_state(False)
