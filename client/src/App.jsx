@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import "./App.css";
 import io from "socket.io-client";
+import {
+    LineChart,
+    Line,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    ResponsiveContainer,
+} from "recharts";
 
 const socket = io.connect("http://localhost:3001");
 
@@ -10,6 +19,7 @@ function App() {
     const [testName, setTestName] = useState("");
     const [testData, setTestData] = useState({});
     const [allData, setAllData] = useState({}); // list of tests
+    const [showGraph, setShowGraph] = useState({}); // To track graph visibility for each test
 
     useEffect(() => {
         socket.on("connect", () => {
@@ -26,26 +36,25 @@ function App() {
         socket.on("test_data", (data) => {
             setTestData(data);
 
-            const { sender, testName, data: d } = data;
+            const { sender, testName, data: test_data } = data;
 
-            let key = `${testName}---${sender}_UNKNOWN_RPI`;
-            if (sender in allRPI) {
-                key = `${testName}---${allRPI[sender]}`;
-            }
+            let key = `${testName}---${sender}`;
 
-            console.log(sender);
-            console.log(allRPI);
             const tempData = { ...allData };
 
             if (!tempData.hasOwnProperty(key)) {
                 tempData[key] = [];
             }
-            if (!tempData[key].includes(d)) {
-                tempData[key].push(d);
+            if (!tempData[key].includes(test_data)) {
+                tempData[key].push(test_data);
             }
             setAllData({ ...tempData });
         });
     }, [socket, allData, allRPI]);
+
+    const toggleGraph = (key) => {
+        setShowGraph((prev) => ({ ...prev, [key]: !prev[key] }));
+    };
 
     return (
         <div className="app-container">
@@ -105,22 +114,18 @@ function App() {
                         <div className="test-container" key={idx}>
                             <h3>{key}</h3>
                             {key in allRPI && <h3>Sender: {allRPI[key]}</h3>}
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Independent Variable</th>
-                                        <th>Dependent Variable</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {allData[key].map((data, idx) => (
-                                        <tr key={idx}>
-                                            <td>{data[0]}</td>
-                                            <td>{data[1]}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            <button
+                                className="btn toggle-graph-btn"
+                                onClick={() => toggleGraph(key)}
+                            >
+                                {showGraph[key] ? "Show Table" : "Show Graph"}
+                            </button>
+
+                            {showGraph[key] ? (
+                                <DataGraph data={allData[key]} />
+                            ) : (
+                                <DataTable data={allData[key]} />
+                            )}
                         </div>
                     ))}
             </div>
@@ -129,3 +134,52 @@ function App() {
 }
 
 export default App;
+
+function DataTable({ data }) {
+    return (
+        <>
+            <table className="data-table">
+                <thead>
+                    <tr>
+                        <th>Independent Variable</th>
+                        <th>Dependent Variable</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.map((data, idx) => (
+                        <tr key={idx}>
+                            <td>{data[0]}</td>
+                            <td>{data[1]}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </>
+    );
+}
+
+function DataGraph({ data }) {
+    return (
+        <>
+            <ResponsiveContainer width="100%" height={300}>
+                <LineChart
+                    data={data.map((d, idx) => ({
+                        name: `${idx + 1}`,
+                        independent: d[0],
+                        dependent: d[1],
+                    }))}
+                >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="independent" />
+                    <YAxis />
+                    <Tooltip />
+                    <Line
+                        type="monotone"
+                        dataKey="dependent"
+                        stroke="#8884d8"
+                    />
+                </LineChart>
+            </ResponsiveContainer>
+        </>
+    );
+}

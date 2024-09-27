@@ -54,8 +54,9 @@ io.on("connection", (socket) => {
     });
 
     socket.on("start_test", (data) => {
-        console.log(`Starting test "${data.testName}"`);
-        socket.to("rpi").emit("start_test", data.testName);
+        let testName = `${data.testName}---${Date.now()}`;
+        console.log(`Starting test "${testName}"`);
+        socket.to("rpi").emit("start_test", testName);
     });
 
     socket.on("stop_test", (data) => {
@@ -64,7 +65,9 @@ io.on("connection", (socket) => {
     });
 
     socket.on("test_data", (data) => {
-        socket.to("client").emit("test_data", { ...data, sender: socket.id });
+        socket
+            .to("client")
+            .emit("test_data", { ...data, sender: allRPI[socket.id] });
     });
 
     socket.on("get_rpis", (data) => {

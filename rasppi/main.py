@@ -4,9 +4,11 @@ import time
 sio = socketio.Client()
 
 running_tests = []
-rpiID = random.randint(1,100) # replace with env variables
 
-freq = 1000 #sometimes miss the first few data points with high freq. otherwise get all values (tested till 1000Hz)
+#testing vars
+rpiID = random.randint(1,100) # replace with env variables
+numData = 50
+freq = 60 #sometimes miss the first few data points with high freq (eg 1000Hz). otherwise get all values
 
 @sio.event
 def connect():
@@ -35,10 +37,9 @@ def stop_test(test_name):
     print(f"stopped test \"{test_name}\"")
 
 def run_test(test_name):
-  time.sleep(0.05) 
   idv = 0
   dv = 0
-  while idv < 1000 and test_name in running_tests:
+  while idv < numData and test_name in running_tests:
     dv = random.randint(1, 100)
     idv += 1
     print(f"data: {idv, dv}, sender: {sio.sid}")
