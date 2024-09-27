@@ -3,11 +3,13 @@ import time
 import socketio
 import random
 import argparse
+import board
+import busio
 
 # sensors
-from sensors.max11617 import read_adc
-from sensors.vl53l0x import read_range
-from sensors.mlx90640 import read_frame
+from sensors.max11617 import init_max11617, read_adc
+from sensors.vl53l0x import init_vl53l0x, read_range
+from sensors.mlx90640 import init_mlx90640, read_frame
 
 sio = socketio.Client()
 
@@ -95,11 +97,17 @@ def main():
     # connect to ws server
     sio.connect(wss_ip)
 
+    # init sensors
+    i2c = busio.I2C(board.SCL, board.SDA)
+    adc = init_max11617(i2c)
+    tof = init_vl53l0x(i2c)
+    tt = init_mlx90640(i2c)
+
     while testStateManager.get_test_state():
         # collect sensor data
-        linpot_value = read_adc()
-        ride_height_value = read_range()
-        tire_temp_frame = read_frame()
+        linpot_value = read_adc(adc)
+        ride_height_value = read_range(tof)
+        tire_temp_frame = read_frame(tt)
 
         # testing mode
         if is_test_mode:

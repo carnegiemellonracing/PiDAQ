@@ -5,8 +5,12 @@ import time
 import numpy as np
 from scipy.interpolate import interp1d
 
-i2c = busio.I2C(board.D3, board.D2)
-sensor = adafruit_vl53l0x.VL53L0X(i2c)
+
+def init_vl53l0x(i2c):
+    sensor = adafruit_vl53l0x.VL53L0X(i2c)
+    return sensor
+
+
 expectedValues = [
     50,
     55,
@@ -59,7 +63,7 @@ calibrationFunction = interp1d(
 )
 
 
-def read_range():
+def read_range(sensor):
     calibrationFunction(sensor.range)
 
 
