@@ -6,7 +6,7 @@ sio = socketio.Client()
 running_tests = []
 
 #testing vars
-rpiID = random.randint(1,100) # replace with env variables
+rpiID = random.randint(1,10000) # replace with env variables
 numData = 50
 freq = 60 #sometimes miss the first few data points with high freq (eg 1000Hz). otherwise get all values
 

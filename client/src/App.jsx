@@ -17,15 +17,13 @@ function App() {
     const [room, setRoom] = useState("");
     const [allRPI, setAllRPI] = useState({});
     const [testName, setTestName] = useState("");
-    const [testData, setTestData] = useState({});
-    const [allData, setAllData] = useState({}); // list of tests
-    const [showGraph, setShowGraph] = useState({}); // To track graph visibility for each test
+    const [allData, setAllData] = useState({}); // List of tests with info and sender data
+    const [showTable, setShowTable] = useState({}); // To track graph visibility for each sender in each test
 
     useEffect(() => {
         socket.on("connect", () => {
             socket.emit("join_client", {});
             setRoom("client");
-
             socket.emit("get_rpis", {});
         });
 
@@ -33,27 +31,19 @@ function App() {
             setAllRPI(data);
         });
 
-        socket.on("test_data", (data) => {
-            setTestData(data);
-
-            const { sender, testName, data: test_data } = data;
-
-            let key = `${testName}---${sender}`;
-
-            const tempData = { ...allData };
-
-            if (!tempData.hasOwnProperty(key)) {
-                tempData[key] = [];
-            }
-            if (!tempData[key].includes(test_data)) {
-                tempData[key].push(test_data);
-            }
-            setAllData({ ...tempData });
+        socket.on("all_data", (data) => {
+            setAllData(data);
         });
-    }, [socket, allData, allRPI]);
+    }, []);
 
-    const toggleGraph = (key) => {
-        setShowGraph((prev) => ({ ...prev, [key]: !prev[key] }));
+    const toggleGraph = (testKey, senderKey) => {
+        setShowTable((prev) => ({
+            ...prev,
+            [testKey]: {
+                ...(prev[testKey] || {}),
+                [senderKey]: !(prev[testKey] || {})[senderKey],
+            },
+        }));
     };
 
     return (
@@ -99,33 +89,66 @@ function App() {
 
                 {room ? <h1>Room Code: {room}</h1> : <h1>Not in a Room</h1>}
 
-                {Object.keys(testData).length !== 0 && (
-                    <>
-                        <h2>
-                            Newest Data: {testData.testName} ({testData.data[0]}
-                            , {testData.data[1]})
-                        </h2>
-                        <h3>Sender: {testData.sender}</h3>
-                    </>
-                )}
-
                 {Object.keys(allData).length !== 0 &&
-                    Object.keys(allData).map((key, idx) => (
+                    Object.keys(allData).map((testKey, idx) => (
                         <div className="test-container" key={idx}>
-                            <h3>{key}</h3>
-                            {key in allRPI && <h3>Sender: {allRPI[key]}</h3>}
-                            <button
-                                className="btn toggle-graph-btn"
-                                onClick={() => toggleGraph(key)}
-                            >
-                                {showGraph[key] ? "Show Table" : "Show Graph"}
-                            </button>
+                            <h3>Test Name: {allData[testKey].info.name}</h3>
+                            <h4>
+                                Start Time:{" "}
+                                {new Date(
+                                    allData[testKey].info.time
+                                ).toLocaleString()}
+                            </h4>
+                            <h4>
+                                Senders:{" "}
+                                {allData[testKey].info.senders.join(", ")}
+                            </h4>
 
-                            {showGraph[key] ? (
-                                <DataGraph data={allData[key]} />
-                            ) : (
-                                <DataTable data={allData[key]} />
-                            )}
+                            <div className="sender-container">
+                                {allData[testKey].info.senders.map(
+                                    (senderKey) => (
+                                        <div
+                                            className="sender-box"
+                                            key={senderKey}
+                                        >
+                                            <h4>Sender: {senderKey}</h4>
+                                            <button
+                                                className="btn toggle-graph-btn"
+                                                onClick={() =>
+                                                    toggleGraph(
+                                                        testKey,
+                                                        senderKey
+                                                    )
+                                                }
+                                            >
+                                                {showTable[testKey] &&
+                                                showTable[testKey][senderKey]
+                                                    ? "Show Graph"
+                                                    : "Show Table"}
+                                            </button>
+
+                                            {showTable[testKey] &&
+                                            showTable[testKey][senderKey] ? (
+                                                <DataTable
+                                                    data={
+                                                        allData[testKey].data[
+                                                            senderKey
+                                                        ]
+                                                    }
+                                                />
+                                            ) : (
+                                                <DataGraph
+                                                    data={
+                                                        allData[testKey].data[
+                                                            senderKey
+                                                        ]
+                                                    }
+                                                />
+                                            )}
+                                        </div>
+                                    )
+                                )}
+                            </div>
                         </div>
                     ))}
             </div>
@@ -146,10 +169,10 @@ function DataTable({ data }) {
                     </tr>
                 </thead>
                 <tbody>
-                    {data.map((data, idx) => (
+                    {data.map((entry, idx) => (
                         <tr key={idx}>
-                            <td>{data[0]}</td>
-                            <td>{data[1]}</td>
+                            <td>{entry[0]}</td>
+                            <td>{entry[1]}</td>
                         </tr>
                     ))}
                 </tbody>
