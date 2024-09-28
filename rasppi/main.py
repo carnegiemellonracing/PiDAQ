@@ -155,43 +155,43 @@ def main():
                 if last_test_name != testStateManager.get_name():
                     last_test_name = testStateManager.get_name()
                     file.write(CSV_HEADER)
+                while True:
+                    print("got into the while loop")
+                    # collect sensor data
+                    if ADC_ACTIVE:
+                        linpot_value = read_adc(adc)
+                    if VL53L0X_ACTIVE:
+                        ride_height_value = read_range(tof)
+                    if MLX_90640_ACTIVE:
+                        tire_temp_frame = read_frame(tt)
 
-                print("got into the while loop")
-                # collect sensor data
-                if ADC_ACTIVE:
-                    linpot_value = read_adc(adc)
-                if VL53L0X_ACTIVE:
-                    ride_height_value = read_range(tof)
-                if MLX_90640_ACTIVE:
-                    tire_temp_frame = read_frame(tt)
-
-                # testing mode
-                if is_test_mode:
-                    dv = random.randint(1, 100)
-                    idv = int(time.time())
-                    sio.emit(
-                        "test_data",
-                        {
-                            "testName": testStateManager.get_name(),
-                            "data": [idv, dv],
-                        },
-                    )
-                else:
-                    formatted_data = {
-                        "tire_temp_frame": (
-                            tire_temp_frame if MLX_90640_ACTIVE else False
-                        ),
-                        "linpot": linpot_value if ADC_ACTIVE else False,
-                        "ride_height": (ride_height_value if VL53L0X_ACTIVE else False),
-                    }
-                    sio.emit(
-                        "test_data",
-                        {
-                            "testName": testStateManager.get_name(),
-                            "data": formatted_data,
-                        },
-                    )
-                    file.write(make_csv_line(formatted_data))
+                    # testing mode
+                    if is_test_mode:
+                        dv = random.randint(1, 100)
+                        idv = int(time.time())
+                        sio.emit(
+                            "test_data",
+                            {
+                                "testName": testStateManager.get_name(),
+                                "data": [idv, dv],
+                            },
+                        )
+                    else:
+                        formatted_data = {
+                            "tire_temp_frame": (
+                                tire_temp_frame if MLX_90640_ACTIVE else False
+                            ),
+                            "linpot": linpot_value if ADC_ACTIVE else False,
+                            "ride_height": (ride_height_value if VL53L0X_ACTIVE else False),
+                        }
+                        # sio.emit(
+                        #     "test_data",
+                        #     {
+                        #         "testName": testStateManager.get_name(),
+                        #         "data": formatted_data,
+                        #     },
+                        # )
+                        file.write(make_csv_line(formatted_data))
 
 
 if __name__ == "__main__":
