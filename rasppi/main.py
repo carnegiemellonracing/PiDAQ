@@ -26,7 +26,7 @@ CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
 
 def make_csv_line(data):
-    return f"{str(time.time())},{data['tire_temp_frame']},{data['linpot']},{data['ride_height']}\n"
+    return f"{str(time.time())},\"{data['tire_temp_frame']}\",{data['linpot']},{data['ride_height']}\n"
 
 
 def get_file_name(test_name, timestamp):
