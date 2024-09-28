@@ -21,6 +21,10 @@ ADC_ACTIVE = False
 MLX_90640_ACTIVE = True
 VL53L0X_ACTIVE = True
 
+CSV_HEADER="timestamp,tire_temp_frame,linpot,ride_height\n"
+def make_csv_line(data):
+    f"{str(time.time())},{data.tire_temp_frame},{data.linpot},{data.ride_height}\n"
+
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
 
@@ -97,7 +101,6 @@ def stop_test(test_name):
     testStateManager.set_state(False)
     testStateManager.set_name("")
 
-
 def main():
     # connect to ws server
     try:
@@ -117,50 +120,55 @@ def main():
         tof = init_vl53l0x(i2c0)
 
     if MLX_90640_ACTIVE:
-        print("got here!!!")
         tt = init_mlx90640(i2c1)
+
+    last_test_name = None
 
     while True:
         if testStateManager.get_state():
-            print("got into the while loop")
-            # collect sensor data
-            if ADC_ACTIVE:
-                linpot_value = read_adc(adc)
-            if VL53L0X_ACTIVE:
-                ride_height_value = read_range(tof)
-            if MLX_90640_ACTIVE:
-                tire_temp_frame = read_frame(tt)
+            with open(testStateManager.get_name()+".csv", "a") as file:
+                if last_test_name != testStateManager.get_name():
+                    file.write(CSV_HEADER)
 
-            # testing mode
-            if is_test_mode:
-                dv = random.randint(1, 100)
-                idv = int(time.time())
-                sio.emit(
-                    "test_data",
-                    {
-                        "testName": testStateManager.get_name(),
-                        "data": [idv, dv],
-                    },
-                )
-            else:
-                sio.emit(
-                    "test_data",
-                    {
-                        "testName": testStateManager.get_name(),
-                        "data": {
-                            "tire_temp_frame": (
-                                tire_temp_frame if MLX_90640_ACTIVE else None
-                            ),
-                            "linpot": linpot_value if ADC_ACTIVE else None,
-                            "ride_height": (
-                                ride_height_value if VL53L0X_ACTIVE else None
-                            ),
+                print("got into the while loop")
+                # collect sensor data
+                if ADC_ACTIVE:
+                    linpot_value = read_adc(adc)
+                if VL53L0X_ACTIVE:
+                    ride_height_value = read_range(tof)
+                if MLX_90640_ACTIVE:
+                    tire_temp_frame = read_frame(tt)
+
+                # testing mode
+                if is_test_mode:
+                    dv = random.randint(1, 100)
+                    idv = int(time.time())
+                    sio.emit(
+                        "test_data",
+                        {
+                            "testName": testStateManager.get_name(),
+                            "data": [idv, dv],
                         },
-                    },
-                )
-
-    sio.wait()
-
+                    )
+                else:
+                    formatted_data = {
+                        "tire_temp_frame": (
+                            tire_temp_frame if MLX_90640_ACTIVE else None
+                        ),
+                        "linpot": linpot_value if ADC_ACTIVE else None,
+                        "ride_height": (
+                            ride_height_value if VL53L0X_ACTIVE else None
+                        ),
+                    };
+                    sio.emit(
+                        "test_data",
+                        {
+                            "testName": testStateManager.get_name(),
+                            "data":
+                        formatted_data
+                        }
+                    )
+                    file.write(make_csv_line(formatted_data))
 
 if __name__ == "__main__":
     main()
