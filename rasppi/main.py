@@ -21,9 +21,12 @@ ADC_ACTIVE = False
 MLX_90640_ACTIVE = True
 VL53L0X_ACTIVE = True
 
-CSV_HEADER="timestamp,tire_temp_frame,linpot,ride_height\n"
+CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
+
+
 def make_csv_line(data):
     f"{str(time.time())},{data.tire_temp_frame},{data.linpot},{data.ride_height}\n"
+
 
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
@@ -101,6 +104,7 @@ def stop_test(test_name):
     testStateManager.set_state(False)
     testStateManager.set_name("")
 
+
 def main():
     # connect to ws server
     try:
@@ -126,7 +130,7 @@ def main():
 
     while True:
         if testStateManager.get_state():
-            with open(testStateManager.get_name()+".csv", "a") as file:
+            with open(testStateManager.get_name() + ".csv", "a") as file:
                 if last_test_name != testStateManager.get_name():
                     file.write(CSV_HEADER)
 
@@ -153,22 +157,20 @@ def main():
                 else:
                     formatted_data = {
                         "tire_temp_frame": (
-                            tire_temp_frame if MLX_90640_ACTIVE else None
+                            tire_temp_frame if MLX_90640_ACTIVE else False
                         ),
-                        "linpot": linpot_value if ADC_ACTIVE else None,
-                        "ride_height": (
-                            ride_height_value if VL53L0X_ACTIVE else None
-                        ),
-                    };
+                        "linpot": linpot_value if ADC_ACTIVE else False,
+                        "ride_height": (ride_height_value if VL53L0X_ACTIVE else False),
+                    }
                     sio.emit(
                         "test_data",
                         {
                             "testName": testStateManager.get_name(),
-                            "data":
-                        formatted_data
-                        }
+                            "data": formatted_data,
+                        },
                     )
                     file.write(make_csv_line(formatted_data))
+
 
 if __name__ == "__main__":
     main()
