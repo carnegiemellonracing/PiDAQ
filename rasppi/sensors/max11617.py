@@ -35,6 +35,12 @@ def read_adc(device):
     return raw_value
 
 
-# Read from the ADC and print the result in decimal
-adc_value = read_adc()
-print(f"ADC Reading (Channel 5): {adc_value}")
+def main():
+    adc = init_max11617(i2c)
+    # Read from the ADC and print the result in decimal
+    adc_value = read_adc(adc)
+    print(f"ADC Reading (Channel 5): {adc_value}")
+
+
+if __name__ == "__main__":
+    main()
