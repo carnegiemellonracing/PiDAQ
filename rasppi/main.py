@@ -5,6 +5,7 @@ import random
 import argparse
 import board
 import busio
+import datetime
 
 # sensors
 from sensors.max11617 import init_max11617, read_adc
@@ -23,9 +24,11 @@ VL53L0X_ACTIVE = True
 
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
-
 def make_csv_line(data):
     return f"{str(time.time())},{data['tire_temp_frame']},{data['linpot']},{data['ride_height']}\n"
+
+def get_file_name(test_name, timestamp):
+    return os.path.join("tests/", f"{timestamp.strftime("%Y_%m_%d/%H_%M")} {test_name}.csv")
 
 
 # set up and parse command line arguments
@@ -49,6 +52,7 @@ else:
 class TestingState:
     def __init__(self):
         self.test_state = False
+        self.test_time_stamp = None
         self.test_name = ""
         self.dry_run = bool(is_test_mode)
         self.daq_pi_id = DAQ_PI_ID if DAQ_PI_ID is not None else random.randint(1, 100)
@@ -69,6 +73,14 @@ class TestingState:
 
     def set_state(self, test_state):
         self.test_state = test_state
+
+    def get_timestamp(self):
+        return self.test_time_stamp
+
+    def start_test(self, test_name, timestamp):
+        self.test_name = test_name
+        self.test_time_stamp = timestamp
+        self.test_state = True
 
 
 # testing vars
@@ -94,8 +106,8 @@ def disconnect():
 @sio.on("start_test")
 def start_test(test_name):
     print(f'starting test "{test_name}"')
-    testStateManager.set_state(True)
-    testStateManager.set_name(test_name)
+    timestamp = datetime.datetime.now(datetime.timezone.utc)
+    testStateManager.start_test(test_name=test_name, timestamp=timestamp)
 
 
 @sio.on("stop_test_rpi")
@@ -130,8 +142,9 @@ def main():
 
     while True:
         if testStateManager.get_state():
-            with open(testStateManager.get_name() + ".csv", "a") as file:
+            with open(get_file_name(testStateManager.get_name(), testStateManager.get_timestamp()), "a") as file:
                 if last_test_name != testStateManager.get_name():
+                    last_test_name = testStateManager.get_name()
                     file.write(CSV_HEADER)
 
                 print("got into the while loop")
