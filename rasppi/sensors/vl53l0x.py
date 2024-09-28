@@ -61,7 +61,9 @@ calibrationFunction = interp1d(
 
 
 def read_range(sensor):
-    return calibrationFunction(sensor.range)
+    print(sensor.range)
+    return sensor.range
+    # return calibrationFunction(sensor.range)
 
 
 def main():

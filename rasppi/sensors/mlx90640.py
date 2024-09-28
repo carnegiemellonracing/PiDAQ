@@ -14,6 +14,7 @@ def init_mlx90640(i2c):
 
 
 def read_frame(mlx):
+    print("got here")
     frame = [0] * (NUM_ROWS * NUM_COLUMNS)
     try:
         mlx.getFrame(frame)

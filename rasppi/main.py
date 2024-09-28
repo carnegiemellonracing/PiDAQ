@@ -18,8 +18,8 @@ DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 
 # toggle sensors
 ADC_ACTIVE = False
-MLX_90640_ACTIVE = False
-VL53L0X_ACTIVE = False
+MLX_90640_ACTIVE = True
+VL53L0X_ACTIVE = True
 
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
@@ -107,51 +107,57 @@ def main():
         return
 
     # init sensors
-    i2c = busio.I2C(board.SCL, board.SDA)
+    i2c1 = busio.I2C(board.SCL, board.SDA)
+    i2c0 = busio.I2C(board.D1, board.D0)
 
     if ADC_ACTIVE:
-        adc = init_max11617(i2c)
+        adc = init_max11617(i2c0)
 
     if VL53L0X_ACTIVE:
-        tof = init_vl53l0x(i2c)
+        tof = init_vl53l0x(i2c0)
 
     if MLX_90640_ACTIVE:
-        tt = init_mlx90640(i2c)
+        print("got here!!!")
+        tt = init_mlx90640(i2c1)
 
-    while testStateManager.get_state():
-        # collect sensor data
-        if ADC_ACTIVE:
-            linpot_value = read_adc(adc)
-        if VL53L0X_ACTIVE:
-            ride_height_value = read_range(tof)
-        if MLX_90640_ACTIVE:
-            tire_temp_frame = read_frame(tt)
+    while True:
+        if testStateManager.get_state():
+            print("got into the while loop")
+            # collect sensor data
+            if ADC_ACTIVE:
+                linpot_value = read_adc(adc)
+            if VL53L0X_ACTIVE:
+                ride_height_value = read_range(tof)
+            if MLX_90640_ACTIVE:
+                tire_temp_frame = read_frame(tt)
 
-        # testing mode
-        if is_test_mode:
-            dv = random.randint(1, 100)
-            idv = int(time.time())
-            sio.emit(
-                "test_data",
-                {
-                    "testName": testStateManager.get_name(),
-                    "data": [idv, dv],
-                },
-            )
-        else:
-            sio.emit(
-                "test_data",
-                {
-                    "testName": testStateManager.get_name(),
-                    "data": {
-                        "tire_temp_frame": (
-                            tire_temp_frame if MLX_90640_ACTIVE else None
-                        ),
-                        "linpot": linpot_value if ADC_ACTIVE else None,
-                        "ride_height": ride_height_value if VL53L0X_ACTIVE else None,
+            # testing mode
+            if is_test_mode:
+                dv = random.randint(1, 100)
+                idv = int(time.time())
+                sio.emit(
+                    "test_data",
+                    {
+                        "testName": testStateManager.get_name(),
+                        "data": [idv, dv],
                     },
-                },
-            )
+                )
+            else:
+                sio.emit(
+                    "test_data",
+                    {
+                        "testName": testStateManager.get_name(),
+                        "data": {
+                            "tire_temp_frame": (
+                                tire_temp_frame if MLX_90640_ACTIVE else None
+                            ),
+                            "linpot": linpot_value if ADC_ACTIVE else None,
+                            "ride_height": (
+                                ride_height_value if VL53L0X_ACTIVE else None
+                            ),
+                        },
+                    },
+                )
 
     sio.wait()
 
