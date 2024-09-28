@@ -23,7 +23,7 @@ VL53L0X_ACTIVE = True
 
 CSV_HEADER="timestamp,tire_temp_frame,linpot,ride_height\n"
 def make_csv_line(data):
-    f"{str(time.time())},{data.tire_temp_frame},{data.linpot},{data.ride_height}\n"
+    f"{str(time.time())},{data['tire_temp_frame']},{data['linpot']},{data['ride_height']}\n"
 
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
