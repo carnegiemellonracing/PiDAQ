@@ -24,11 +24,15 @@ VL53L0X_ACTIVE = True
 
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
+
 def make_csv_line(data):
     return f"{str(time.time())},{data['tire_temp_frame']},{data['linpot']},{data['ride_height']}\n"
 
+
 def get_file_name(test_name, timestamp):
-    return os.path.join("tests/", f"{timestamp.strftime("%Y_%m_%d/%H_%M")} {test_name}.csv")
+    return os.path.join(
+        "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}.csv"
+    )
 
 
 # set up and parse command line arguments
@@ -142,7 +146,12 @@ def main():
 
     while True:
         if testStateManager.get_state():
-            with open(get_file_name(testStateManager.get_name(), testStateManager.get_timestamp()), "a") as file:
+            with open(
+                get_file_name(
+                    testStateManager.get_name(), testStateManager.get_timestamp()
+                ),
+                "a",
+            ) as file:
                 if last_test_name != testStateManager.get_name():
                     last_test_name = testStateManager.get_name()
                     file.write(CSV_HEADER)
