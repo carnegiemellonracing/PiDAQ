@@ -1,0 +1,44 @@
+# Ignore Node.js dependencies
+client/node_modules/
+server/node_modules/
+
+# Ignore lock files for Node.js
+client/package-lock.json
+server/package-lock.json
+
+# Ignore build output for the React app
+client/build/
+client/dist/
+
+# Ignore .env files (if any environment variables are used)
+client/.env
+server/.env
+
+# Ignore logs
+client/logs/
+server/logs/
+*.log
+
+# Ignore Python virtual environment
+rasppi/venv/
+
+# Ignore Python bytecode
+rasppi/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore .DS_Store (MacOS system file)
+.DS_Store
+
+# Ignore editor-specific files (VSCode, etc.)
+.vscode/
+*.swp
+*.swo
+.idea/
+
+# Ignore coverage reports
+client/coverage/
+server/coverage/
+*.lcov
+

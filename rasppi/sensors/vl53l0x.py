@@ -5,6 +5,7 @@ from scipy.interpolate import interp1d
 
 def init_vl53l0x(i2c):
     sensor = adafruit_vl53l0x.VL53L0X(i2c)
+    print('vl53l0x connected!')
     return sensor
 
 

@@ -20,7 +20,7 @@ DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 # toggle sensors
 ADC_ACTIVE = False
 MLX_90640_ACTIVE = True
-VL53L0X_ACTIVE = True
+VL53L0X_ACTIVE = False
 
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
