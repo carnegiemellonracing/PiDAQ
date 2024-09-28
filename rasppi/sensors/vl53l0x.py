@@ -1,8 +1,5 @@
-import board
-import busio
 import adafruit_vl53l0x
 import time
-import numpy as np
 from scipy.interpolate import interp1d
 
 
@@ -64,9 +61,14 @@ calibrationFunction = interp1d(
 
 
 def read_range(sensor):
-    calibrationFunction(sensor.range)
+    return calibrationFunction(sensor.range)
 
 
-while 1:
-    print(f"calibratedValue = {read_range()}")
-    time.sleep(0.01)
+def main():
+    while 1:
+        print(f"calibratedValue = {read_range()}")
+        time.sleep(0.01)
+
+
+if __name__ == "__main__":
+    main()

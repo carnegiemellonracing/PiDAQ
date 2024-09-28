@@ -16,16 +16,20 @@ sio = socketio.Client()
 # get Pi ID from env var
 DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 
+# toggle sensors
+ADC_ACTIVE = False
+MLX_90640_ACTIVE = False
+VL53L0X_ACTIVE = False
+
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
 
 parser.add_argument("ip_address", type=str, help="IP address of the WebSocket Server")
-parser.add_argument(
-    "-t", "--test_mode", type=bool, help="An optional argument", default=False
-)
+parser.add_argument("-t", "--test_mode", action="store_true", help="Run in test mode")
+
 
 args = parser.parse_args()
-wss_ip = args.first_arg
+wss_ip = args.ip_address
 is_test_mode = args.test_mode
 print(f"WS server address: {wss_ip}")
 if is_test_mode:
@@ -39,12 +43,13 @@ class TestingState:
     def __init__(self):
         self.test_state = False
         self.test_name = ""
-        self.dry_run = is_test_mode is None
-        if DAQ_PI_ID is None:
+        self.dry_run = bool(is_test_mode)
+        self.daq_pi_id = DAQ_PI_ID if DAQ_PI_ID is not None else random.randint(1, 100)
+
+        if self.daq_pi_id is None:
             print(
                 "WARNING: Raspberry Pi ID could not be read from system. Setting a random ID for testing purposes."
             )
-            DAQ_PI_ID = random.randint(1, 100)
 
     def get_name(self):
         return self.test_name
@@ -95,19 +100,32 @@ def stop_test(test_name):
 
 def main():
     # connect to ws server
-    sio.connect(wss_ip)
+    try:
+        sio.connect(wss_ip)
+    except socketio.exceptions.ConnectionError:
+        print(f"Failed to connect to {wss_ip}")
+        return
 
     # init sensors
     i2c = busio.I2C(board.SCL, board.SDA)
-    adc = init_max11617(i2c)
-    tof = init_vl53l0x(i2c)
-    tt = init_mlx90640(i2c)
 
-    while testStateManager.get_test_state():
+    if ADC_ACTIVE:
+        adc = init_max11617(i2c)
+
+    if VL53L0X_ACTIVE:
+        tof = init_vl53l0x(i2c)
+
+    if MLX_90640_ACTIVE:
+        tt = init_mlx90640(i2c)
+
+    while testStateManager.get_state():
         # collect sensor data
-        linpot_value = read_adc(adc)
-        ride_height_value = read_range(tof)
-        tire_temp_frame = read_frame(tt)
+        if ADC_ACTIVE:
+            linpot_value = read_adc(adc)
+        if VL53L0X_ACTIVE:
+            ride_height_value = read_range(tof)
+        if MLX_90640_ACTIVE:
+            tire_temp_frame = read_frame(tt)
 
         # testing mode
         if is_test_mode:
@@ -126,9 +144,11 @@ def main():
                 {
                     "testName": testStateManager.get_name(),
                     "data": {
-                        "tire_temp_frame": tire_temp_frame,
-                        "linpot": linpot_value,
-                        "ride_height": ride_height_value,
+                        "tire_temp_frame": (
+                            tire_temp_frame if MLX_90640_ACTIVE else None
+                        ),
+                        "linpot": linpot_value if ADC_ACTIVE else None,
+                        "ride_height": ride_height_value if VL53L0X_ACTIVE else None,
                     },
                 },
             )

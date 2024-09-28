@@ -1,5 +1,3 @@
-import board
-import busio
 from adafruit_bus_device.i2c_device import I2CDevice
 
 # MAX11617 device I2C address (binary: 0110101, decimal: 53)

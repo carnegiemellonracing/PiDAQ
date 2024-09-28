@@ -1,6 +1,3 @@
-import time
-import board
-import busio
 import adafruit_mlx90640
 
 NUM_ROWS = 24
