@@ -34,6 +34,16 @@ def get_file_name(test_name, timestamp):
         "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}.csv"
     )
 
+def open_file_with_directories(file_path, mode='w'):
+    # Extract the directory from the file path
+    directory = os.path.dirname(file_path)
+
+    # Check if the directory exists, and if not, create it
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    # Now open the file
+    return open(file_path, mode)
 
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
@@ -146,7 +156,7 @@ def main():
 
     while True:
         if testStateManager.get_state():
-            with open(
+            with open_file_with_directories(
                 get_file_name(
                     testStateManager.get_name(), testStateManager.get_timestamp()
                 ),

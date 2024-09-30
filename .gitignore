@@ -42,3 +42,8 @@ client/coverage/
 server/coverage/
 *.lcov
 
+# Ignore test results
+rasppi/tests/*
+
+# Ignore video files
+videos/*
