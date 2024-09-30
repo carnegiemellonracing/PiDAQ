@@ -7,6 +7,7 @@ import board
 import busio
 import datetime
 
+
 # sensors
 from sensors.max11617 import init_max11617, read_adc
 from sensors.vl53l0x import init_vl53l0x, read_range
@@ -18,12 +19,8 @@ sio = socketio.Client()
 DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 
 # toggle sensors
-ADC_ACTIVE = False
-MLX_90640_ACTIVE = True
-VL53L0X_ACTIVE = False
 
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
-
 
 def make_csv_line(data):
     return f"{str(time.time())},\"{data['tire_temp_frame']}\",{data['linpot']},{data['ride_height']}\n"
@@ -31,7 +28,7 @@ def make_csv_line(data):
 
 def get_file_name(test_name, timestamp):
     return os.path.join(
-        "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}.csv"
+        "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}|{DAQ_PI_ID}.csv"
     )
 
 def open_file_with_directories(file_path, mode='w'):
@@ -50,11 +47,26 @@ parser = argparse.ArgumentParser(description="Process CLI arguments.")
 
 parser.add_argument("ip_address", type=str, help="IP address of the WebSocket Server")
 parser.add_argument("-t", "--test_mode", action="store_true", help="Run in test mode")
-
+parser.add_argument("-a", "--adc", action="store_true", help="Enable ADC sensor")
+parser.add_argument("-m", "--mlx", action="store_true", help="Enable MLX90640 sensor")
+parser.add_argument("-v", "--vl", action="store_true", help="Enable VL53L0X sensor")
 
 args = parser.parse_args()
 wss_ip = args.ip_address
 is_test_mode = args.test_mode
+adc_active = args.adc
+mlx_active = args.mlx
+vl53l0x_active = args.vl
+
+
+if DAQ_PI_ID is None:
+    if is_test_mode:
+        print("WARNING: DAQ_PI_ID not set in environment. Using random value")
+        DAQ_PI_ID = random.randint(1, 100)
+    else:
+        print("ERROR: DAQ_PI_ID not set in environment.")
+        exit(1)
+
 print(f"WS server address: {wss_ip}")
 if is_test_mode:
     print("Running in dry run test mode.")
@@ -143,13 +155,13 @@ def main():
     i2c1 = busio.I2C(board.SCL, board.SDA)
     i2c0 = busio.I2C(board.D1, board.D0)
 
-    if ADC_ACTIVE:
+    if adc_active:
         adc = init_max11617(i2c0)
 
-    if VL53L0X_ACTIVE:
+    if vl53l0x_active:
         tof = init_vl53l0x(i2c0)
 
-    if MLX_90640_ACTIVE:
+    if mlx_active:
         tt = init_mlx90640(i2c1)
 
     last_test_name = None
