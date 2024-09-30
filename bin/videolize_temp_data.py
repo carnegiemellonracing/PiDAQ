@@ -14,6 +14,8 @@ parser = argparse.ArgumentParser(description="Process CLI arguments.")
 parser.add_argument("file_name", type=str, help="Name of csv file to be processed")
 parser.add_argument("-s", "--speed", default=1, type=int,help="Speed the video will be in")
 parser.add_argument("-d", "--diff", action="store_true", help="Mode to show the difference between frames")
+parser.add_argument("--min", type=int, help="Minimum value for the color scale")
+parser.add_argument("--max", type=int, help="Maximum value for the color scale")
 
 args = parser.parse_args()
 file_name = args.file_name
@@ -29,6 +31,13 @@ fig, ax = plt.subplots(figsize=(12, 7))
 # Set a constant scale (vmin, vmax) and use a blue-to-red gradient (coolwarm colormap)
 vmin = -30 if diff_mode else 25  # Set your desired minimum value for the color scale
 vmax = 30 if diff_mode else 90  # Set your desired maximum value for the color scale
+
+if args.min:
+    vmin = args.min
+
+if args.max:
+    vmax = args.max
+
 therm1 = ax.imshow(np.zeros((24, 32)), vmin=vmin, vmax=vmax, cmap='coolwarm')
 
 cbar = fig.colorbar(therm1)
@@ -99,7 +108,16 @@ with open(frames_txt_path, 'w') as timestamp_file:
 
 # Run ffmpeg command to create the video from frames
 script_dir = os.path.dirname(os.path.realpath(__file__))
-output_video_name = os.path.join(script_dir,f"../videos/{os.path.splitext(os.path.basename(file_name))[0]}_{speed_up_factor}x{'_diff' if diff_mode else ''}.mp4")
+file_name = os.path.splitext(os.path.basename(file_name))[0]
+file_name += f"_{speed_up_factor}x"
+if diff_mode:
+    file_name += "_diff"
+if args.min or args.max:
+    file_name += f"_{args.min}-{args.max}"
+
+file_name += ".mp4"
+
+output_video_name = os.path.join(script_dir,f"../videos/{file_name}")
 
 ffmpeg_cmd = [
     'ffmpeg', '-f', 'concat', '-safe', '0', '-i', frames_txt_path,
