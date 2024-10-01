@@ -27,12 +27,14 @@ def read_frame(mlx):
         frame = mlx.do_compensation(raw_frame)
 
         # Display frame temperatures (optional)
+        '''
         for h in range(NUM_ROWS):
             for w in range(NUM_COLUMNS):
                 t = frame[h * NUM_COLUMNS + w]
                 print("%0.1f, " % t, end="")
             print()
         print()
+        '''
 
         return frame
     except Exception as e:

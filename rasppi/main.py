@@ -162,7 +162,7 @@ def main():
         tof = init_vl53l0x(i2c0)
 
     if mlx_active:
-        tt = init_mlx90640(i2c1)
+        tt = init_mlx90640()
 
     last_test_name = None
 
@@ -180,11 +180,11 @@ def main():
                 while True:
                     print("got into the while loop")
                     # collect sensor data
-                    if ADC_ACTIVE:
+                    if adc_active:
                         linpot_value = read_adc(adc)
-                    if VL53L0X_ACTIVE:
+                    if vl53l0x_active:
                         ride_height_value = read_range(tof)
-                    if MLX_90640_ACTIVE:
+                    if mlx_active:
                         tire_temp_frame = read_frame(tt)
 
                     # testing mode
@@ -201,10 +201,10 @@ def main():
                     else:
                         formatted_data = {
                             "tire_temp_frame": (
-                                tire_temp_frame if MLX_90640_ACTIVE else False
+                                tire_temp_frame if mlx_active else False
                             ),
-                            "linpot": linpot_value if ADC_ACTIVE else False,
-                            "ride_height": (ride_height_value if VL53L0X_ACTIVE else False),
+                            "linpot": linpot_value if adc_active else False,
+                            "ride_height": (ride_height_value if vl53l0x_active else False),
                         }
                         # sio.emit(
                         #     "test_data",
