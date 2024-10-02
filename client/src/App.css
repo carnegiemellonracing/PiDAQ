@@ -157,3 +157,10 @@ ul {
 .toggle-graph-btn {
     margin-bottom: 10px;
 }
+
+.running-senders-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    height: 100vh;
+}
