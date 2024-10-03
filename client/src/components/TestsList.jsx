@@ -1,20 +1,16 @@
 import StopTestBtn from "./StopTestBtn";
 
-export default function TestsList({ allTests, onStopTest }) {
-  return allTests.length !== 0 ? (
+export default function TestsList({ currentTest, onStopTest }) {
+  return currentTest ? (
     <>
-      <h2>All Tests Running:</h2>
-      <ul className="test-list list">
-        {allTests.map((testName) => (
-          <li key={testName} className="list-item">
-            <p>{testName}</p>
-            <StopTestBtn
-              onClick={() => onStopTest(testName)}
-              testName={testName}
-            />
-          </li>
-        ))}
-      </ul>
+      <h2>Currently running one test</h2>
+      <div>
+        <p>{currentTest}</p>
+        <StopTestBtn
+          onClick={() => onStopTest(currentTest)}
+          testName={currentTest}
+        />
+      </div>
     </>
   ) : (
     <h2>No Tests Running</h2>

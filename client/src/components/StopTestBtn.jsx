@@ -5,7 +5,7 @@ export default function StopTestBtn({ testName, onClick }) {
       id={`stop${testName}`}
       onClick={(e) => {
         let confirm = e.target.getAttribute("data-confirm");
-        console.log();
+
         if (confirm === "false") {
           e.target.setAttribute("data-confirm", "true");
           e.target.innerHTML = "Confirm?";

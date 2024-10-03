@@ -64,7 +64,7 @@ io.on("connection", (socket) => {
 
     // Send the current allData to the client
     io.to("client").emit("status_rpis", allRPI);
-    io.to("client").emit("status_tests", [runningTest]);
+    io.to("client").emit("status_test", runningTest);
     io.to("client").emit("all_data", allData);
   });
 
@@ -87,6 +87,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start_test", (data) => {
+    console.log("starting test");
     if (runningTest) return;
     const timeStamp = Date.now();
     const testName = `${data.testName}---${timeStamp}`;
@@ -111,16 +112,16 @@ io.on("connection", (socket) => {
     if (runningTest == testName) {
       console.log(`Stopping test "${testName}"`);
       io.to("rpi").emit("stop_test_rpi", testName);
-
-      io.to("client").emit("status_tests", [runningTest]);
       runningTest = null;
+
+      io.to("client").emit("status_test", runningTest);
     } else {
       console.log(`Error: Test "${testName}" is not running`);
     }
   });
 
   socket.on("get_tests", () => {
-    io.to("client").emit("status_tests", [runningTest]);
+    io.to("client").emit("status_test", runningTest);
   });
 
   socket.on("test_data", (data) => {
@@ -129,7 +130,6 @@ io.on("connection", (socket) => {
 
     const average_temp =
       test_data.tire_temp_frame.reduce((acc, v) => {
-        console.log(acc);
         return acc + v;
       }, 0) / test_data.tire_temp_frame.length;
 

@@ -6,12 +6,12 @@ import TestDisplay from "../components/TestDisplay";
 export default function StoppedView({
   allData,
   allRPI,
-  allTests,
   room,
   emit,
   onRequestStopTest,
   setTestName,
   testName,
+  currentTest,
 }) {
   return (
     <div className="app-container">
@@ -27,6 +27,7 @@ export default function StoppedView({
         <button
           className="btn"
           onClick={() => {
+            console.log("Starting test");
             emit("start_test", { testName });
             emit("get_tests");
           }}
@@ -36,7 +37,7 @@ export default function StoppedView({
       </div>
 
       <div className="info-section">
-        <TestsList allTests={allTests} onStopTest={onRequestStopTest} />
+        <TestsList onStopTest={onRequestStopTest} currentTest={currentTest} />
 
         <PIsList allRPI={allRPI} />
 

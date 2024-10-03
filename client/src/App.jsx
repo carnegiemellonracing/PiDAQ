@@ -11,28 +11,25 @@ import RunningTestView from "./view/RunningTestView";
 
 function App() {
   const [testName, setTestName] = useState("");
-  const { room, allRPI, allTests, allData, emit } = useSocket();
+  const { room, allRPI, currentTest, allData, emit } = useSocket();
   const onRequestStopTest = (testName) => {
     emit("stop_test_server", {
       testName,
     });
   };
 
-  const currentTest = allTests[0];
   const currentTestData = allData[currentTest];
 
-  console.log("allTests", allTests);
-
-  return allTests.length == 0 || !currentTestData ? (
+  return !currentTest || !currentTestData ? (
     <StoppedView
       allData={allData}
       allRPI={allRPI}
-      allTests={allTests}
       room={room}
       emit={emit}
       onRequestStopTest={onRequestStopTest}
       setTestName={setTestName}
       testName={testName}
+      currentTest={currentTest}
     />
   ) : (
     <RunningTestView
@@ -40,7 +37,6 @@ function App() {
       currentTestData={currentTestData}
       allData={allData}
       allRPI={allRPI}
-      allTests={allTests}
       room={room}
       emit={emit}
       onRequestStopTest={onRequestStopTest}

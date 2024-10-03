@@ -122,6 +122,10 @@ ul {
     color: #bb86fc;
 }
 
+.sender-box.sender-disconnected {
+    background-color: #544;
+}
+
 .sender-box .btn {
     background-color: #03dac6;
     margin-top: 10px;
@@ -162,4 +166,9 @@ ul {
     display: grid;
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr 1fr;
+}
+
+.tire-temp-frame-display canvas {
+    margin-top: 10px;
+    height: 30vh;
 }

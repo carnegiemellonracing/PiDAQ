@@ -19,7 +19,7 @@ sio = socketio.Client()
 DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 
 # toggle sensors
-
+DISCONNECT_TIMEOUT_SECONDS = 300
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
 def make_csv_line(data):
@@ -147,6 +147,9 @@ def try_connect():
     except socketio.exceptions.ConnectionError:
         print(f"Failed to connect to {wss_ip}")
         return
+    except ValueError:
+        print("CLient is already connected")
+        return
 
 def main():
     # connect to ws server
@@ -166,6 +169,7 @@ def main():
         tt = init_mlx90640()
 
     last_test_name = None
+    last_connected_timestamp = None
 
     loop_iterations = 0
     while True:
@@ -174,6 +178,12 @@ def main():
         if (not sio.connected) and (loop_iterations % 10 == 0):
             print("Retrying connection")
             try_connect()
+            # If last connected timestamp is more than five minutes in the past
+            if last_connected_timestamp is not None:
+                if (datetime.datetime.now() - last_connected_timestamp).seconds > DISCONNECT_TIMEOUT_SECONDS:
+                    print("Connection lost timeout.")
+                    exit(1)
+
         if testStateManager.get_state():
             with open_file_with_directories(
                 get_file_name(
@@ -225,6 +235,7 @@ def main():
                                 "data": formatted_data,
                             },
                         )
+                        last_connected_timestamp = datetime.datetime.now()
                     else:
                         print("Client is not connected, cannot emit event.")
 

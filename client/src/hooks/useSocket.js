@@ -9,8 +9,9 @@ export function useSocket() {
 
   const [room, setRoom] = useState("");
   const [allRPI, setAllRPI] = useState({});
-  const [allTests, setAllTests] = useState([]);
+  const [currentTest, setCurrentTest] = useState(null);
   const [allData, setAllData] = useState({}); // List of tests with info and sender data
+
   useEffect(() => {
     if (socket) {
       socket.on("connect", () => {
@@ -19,13 +20,11 @@ export function useSocket() {
       });
 
       socket.on("status_rpis", (data) => {
-        console.log("status_rpis", data);
         setAllRPI(data);
       });
 
-      socket.on("status_tests", (data) => {
-        data = data.filter((test) => test != null);
-        setAllTests(data);
+      socket.on("status_test", (data) => {
+        setCurrentTest(data);
       });
 
       socket.on("all_data", (data) => {
@@ -73,7 +72,7 @@ export function useSocket() {
   return {
     room,
     allRPI,
-    allTests,
+    currentTest,
     allData,
     emit,
   };

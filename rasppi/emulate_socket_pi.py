@@ -116,7 +116,7 @@ def main():
             try:
                 formatted_data = {
                     "tire_temp_frame":
-                        list(30 + (70 - 30) * np.random.rand(700)),
+                        list(30 + (70 - 30) * np.random.rand(768)),
                     "linpot": random.randint(1, 10),
                     "ride_height": random.randint(6, 16),
                     "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
