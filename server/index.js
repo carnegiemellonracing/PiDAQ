@@ -9,7 +9,8 @@ import { Server } from "socket.io";
 
 const allRPI = {};
 const allData = {}; // To store all test data
-const runningTests = [];
+let runningTest = "";
+const previouslyConnectedPis = [];
 
 // allData format:
 // {
@@ -32,6 +33,8 @@ const io = new Server(server, {
     origin: "*",
     methods: ["GET", "POST"],
   },
+  pingInterval: 1000,
+  pingTimeout: 3000,
 });
 
 io.on("connection", (socket) => {
@@ -40,7 +43,17 @@ io.on("connection", (socket) => {
     const env = data.env;
     socket.join("rpi");
     allRPI[id] = env;
-    console.log(`RPI ${socket.id} has joined. ENV: ${env}`);
+    if (!previouslyConnectedPis.includes(env)) {
+      console.log(`RPI ${socket.id} has joined. ENV: ${env}`);
+      // Tell *this* raspberry pi to stop all tests
+      socket.emit("stop_test_rpi", {});
+    } else {
+      console.log(`RPI ${socket.id} has reconnected. ENV: ${env}`);
+      if (!runningTest) {
+        socket.emit("stop_test_rpi", {});
+      }
+    }
+    previouslyConnectedPis.push(env);
 
     io.to("client").emit("status_rpis", allRPI);
   });
@@ -51,7 +64,7 @@ io.on("connection", (socket) => {
 
     // Send the current allData to the client
     io.to("client").emit("status_rpis", allRPI);
-    io.to("client").emit("status_tests", runningTests);
+    io.to("client").emit("status_tests", [runningTest]);
     io.to("client").emit("all_data", allData);
   });
 
@@ -74,6 +87,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start_test", (data) => {
+    if (runningTest) return;
     const timeStamp = Date.now();
     const testName = `${data.testName}---${timeStamp}`;
 
@@ -86,30 +100,40 @@ io.on("connection", (socket) => {
       data: {},
     };
     console.log(`Starting test "${testName}"`);
-    runningTests.push(testName);
+    runningTest = testName;
     socket.to("rpi").emit("start_test", testName);
+    io.to("client").emit("all_data", allData);
   });
 
   socket.on("stop_test_server", (data) => {
     const testName = data.testName;
-    console.log(`Stopping test "${testName}"`);
-    io.to("rpi").emit("stop_test_rpi", testName);
 
-    const idx = runningTests.indexOf(testName);
-    if (idx > -1) {
-      runningTests.splice(idx, 1);
+    if (runningTest == testName) {
+      console.log(`Stopping test "${testName}"`);
+      io.to("rpi").emit("stop_test_rpi", testName);
+
+      io.to("client").emit("status_tests", [runningTest]);
+      runningTest = null;
+    } else {
+      console.log(`Error: Test "${testName}" is not running`);
     }
-
-    io.to("client").emit("status_tests", runningTests);
   });
 
   socket.on("get_tests", () => {
-    io.to("client").emit("status_tests", runningTests);
+    io.to("client").emit("status_tests", [runningTest]);
   });
 
   socket.on("test_data", (data) => {
-    const { testName, data: test_data, timestamp } = data;
+    const { testName, data: test_data } = data;
     const sender = allRPI[socket.id];
+
+    const average_temp =
+      test_data.tire_temp_frame.reduce((acc, v) => {
+        console.log(acc);
+        return acc + v;
+      }, 0) / test_data.tire_temp_frame.length;
+
+    test_data["average_temp"] = average_temp;
 
     if (allData[testName]) {
       if (!allData[testName]["info"]["senders"].includes(sender)) {
@@ -120,10 +144,12 @@ io.on("connection", (socket) => {
         allData[testName]["data"][sender] = [];
       }
       allData[testName]["data"][sender].push(test_data);
-
-      // Emit the updated allData to the client
-      // io.to("client").emit("all_data", allData);
     }
+    io.to("client").emit("test_data", {
+      testName,
+      data: test_data,
+      sender,
+    });
   });
 });
 

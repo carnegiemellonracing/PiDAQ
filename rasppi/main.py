@@ -112,12 +112,10 @@ class TestingState:
 # testing vars
 testStateManager = TestingState()
 
-
 @sio.event
 def connect():
     sio.emit("join_rpi", {"env": f"rpi{DAQ_PI_ID}"})
     print("connection established")
-
 
 @sio.event
 def connect_error(data):
@@ -135,21 +133,24 @@ def start_test(test_name):
     timestamp = datetime.datetime.now(datetime.timezone.utc)
     testStateManager.start_test(test_name=test_name, timestamp=timestamp)
 
-
 @sio.on("stop_test_rpi")
 def stop_test(test_name):
     print(f'stopped test "{test_name}"')
     testStateManager.set_state(False)
     testStateManager.set_name("")
 
-
-def main():
-    # connect to ws server
+def try_connect():
+    if sio.connected:
+        return
     try:
         sio.connect(wss_ip)
     except socketio.exceptions.ConnectionError:
         print(f"Failed to connect to {wss_ip}")
         return
+
+def main():
+    # connect to ws server
+    try_connect()
 
     # init sensors
     i2c1 = busio.I2C(board.SCL, board.SDA)
@@ -166,7 +167,13 @@ def main():
 
     last_test_name = None
 
+    loop_iterations = 0
     while True:
+        loop_iterations += 1
+
+        if (not sio.connected) and (loop_iterations % 10 == 0):
+            print("Retrying connection")
+            try_connect()
         if testStateManager.get_state():
             with open_file_with_directories(
                 get_file_name(
@@ -190,7 +197,7 @@ def main():
                 if is_test_mode:
                     dv = random.randint(1, 100)
                     idv = int(time.time())
-                    try:
+                    if sio.connected:
                         sio.emit(
                             "test_data",
                             {
@@ -198,9 +205,8 @@ def main():
                                 "data": [idv, dv],
                             },
                         )
-                    except Exception as e:
-                        print(e)
-                        print(sio)
+                    else:
+                        print("Client is not connected, cannot emit event.")
 
                 else:
                     formatted_data = {
@@ -209,15 +215,19 @@ def main():
                         ),
                         "linpot": linpot_value if adc_active else False,
                         "ride_height": (ride_height_value if vl53l0x_active else False),
+                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
                     }
-                    sio.emit(
-                        "test_data",
-                        {
-                            "testName": testStateManager.get_name(),
-                            "data": formatted_data,
-                            "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                        },
-                    )
+                    if sio.connected:
+                        sio.emit(
+                            "test_data",
+                            {
+                                "testName": testStateManager.get_name(),
+                                "data": formatted_data,
+                            },
+                        )
+                    else:
+                        print("Client is not connected, cannot emit event.")
+
                     file.write(make_csv_line(formatted_data))
 
 

@@ -24,6 +24,7 @@ export function useSocket() {
       });
 
       socket.on("status_tests", (data) => {
+        data = data.filter((test) => test != null);
         setAllTests(data);
       });
 
