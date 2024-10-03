@@ -2,34 +2,12 @@ import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import DataGraph from "./DataGraph";
 import TireTempFrameDisplay from "./TireTempFrameDisplay";
 
-export default function Graphs({ data, filterRecent, showImage }) {
+export default function Graphs({ data, filterRecent, showImage, testName }) {
   // Create three data graphs for each sender
   const firstEntry = useMemo(() => data[0], [data]);
   const firstTime = useMemo(() => firstEntry["timestamp"], [firstEntry]);
   const lastEntry = data[data.length - 1];
   const lastTime = useMemo(() => lastEntry["timestamp"], [lastEntry]);
-
-  const [lastImage, setLastImage] = useState(lastEntry?.["tire_temp_frame"]);
-
-  const lastImageTimeout = useRef(null);
-
-  const onRefresh = useRef(null);
-
-  useEffect(() => {
-    onRefresh.current = () => {
-      setLastImage(lastEntry["tire_temp_frame"]);
-      lastImageTimeout.current = null;
-    };
-  }, [lastEntry]);
-
-  useEffect(() => {
-    if (!lastImageTimeout.current && showImage) {
-      const timeout = setTimeout(() => {
-        onRefresh.current();
-      }, 500);
-      lastImageTimeout.current = timeout;
-    }
-  }, [onRefresh, showImage, lastEntry]);
 
   const dateCache = useRef({});
   const cachedDateToMillis = useCallback(
@@ -109,28 +87,28 @@ export default function Graphs({ data, filterRecent, showImage }) {
         {ride_height.length > 0 && (
           <>
             <h4>Ride Height</h4>
-            <DataGraph data={ride_height} />
+            <DataGraph data={ride_height} testName={testName} />
           </>
         )}
 
         {linpot.length > 0 && (
           <>
             <h4>Linpot</h4>
-            <DataGraph data={linpot} />
+            <DataGraph data={linpot} testName={testName} />
           </>
         )}
 
         {average_temp.length > 0 && (
           <>
             <h4>Average Temp</h4>
-            <DataGraph data={average_temp} />
+            <DataGraph data={average_temp} testName={testName} />
           </>
         )}
       </div>
       {showImage && (
         <div className="temp-canvas">
           <h4>Temperature</h4>
-          <TireTempFrameDisplay frame={lastImage} />
+          <TireTempFrameDisplay lastEntry={lastEntry} />
         </div>
       )}
     </div>

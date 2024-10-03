@@ -38,7 +38,7 @@ export default function TestDisplay({ data, testKey }) {
             {showTable[testKey] && showTable[testKey][senderKey] ? (
               <DataTable data={data.data[senderKey]} />
             ) : (
-              <Graphs data={data.data[senderKey]} />
+              <Graphs data={data.data[senderKey]} testName={testKey} />
             )}
           </div>
         ))}

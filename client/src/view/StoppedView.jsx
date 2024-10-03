@@ -2,6 +2,7 @@ import StopTestBtn from "../components/StopTestBtn";
 import PIsList from "../components/PIsList";
 import TestsList from "../components/TestsList";
 import TestDisplay from "../components/TestDisplay";
+import StartTestMenu from "../components/StartTestMenu";
 
 export default function StoppedView({
   allData,
@@ -9,32 +10,11 @@ export default function StoppedView({
   room,
   emit,
   onRequestStopTest,
-  setTestName,
-  testName,
   currentTest,
 }) {
   return (
     <div className="app-container">
-      <div className="controls">
-        <input
-          type="text"
-          className="input-field"
-          placeholder="Test Name"
-          onChange={(e) => {
-            setTestName(e.target.value);
-          }}
-        />
-        <button
-          className="btn"
-          onClick={() => {
-            console.log("Starting test");
-            emit("start_test", { testName });
-            emit("get_tests");
-          }}
-        >
-          Start Test
-        </button>
-      </div>
+      <StartTestMenu emit={emit} />
 
       <div className="info-section">
         <TestsList onStopTest={onRequestStopTest} currentTest={currentTest} />

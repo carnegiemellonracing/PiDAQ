@@ -8,11 +8,12 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-export default function DataGraph({ data }) {
+export default function DataGraph({ data, testName }) {
+  console.log(testName);
   return (
     <>
       <ResponsiveContainer width="100%" height={100}>
-        <LineChart data={data}>
+        <LineChart data={data} syncId={testName}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="independent" />
           <YAxis />

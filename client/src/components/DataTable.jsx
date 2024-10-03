@@ -37,6 +37,8 @@ export default function DataTable({ data }) {
     [cachedDateToMillis, firstTimeMillis],
   );
 
+  console.log(data.length);
+
   return (
     <>
       <table className="data-table">
