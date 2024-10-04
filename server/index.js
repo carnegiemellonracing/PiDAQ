@@ -128,10 +128,11 @@ io.on("connection", (socket) => {
     const { testName, data: test_data } = data;
     const sender = allRPI[socket.id];
 
-    const average_temp =
-      test_data.tire_temp_frame.reduce((acc, v) => {
-        return acc + v;
-      }, 0) / test_data.tire_temp_frame.length;
+    const average_temp = test_data.tire_temp_frame
+      ? test_data.tire_temp_frame.reduce((acc, v) => {
+          return acc + v;
+        }, 0) / test_data.tire_temp_frame.length
+      : false;
 
     test_data["average_temp"] = average_temp;
 

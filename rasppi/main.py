@@ -168,6 +168,7 @@ def main():
     if mlx_active:
         tt = init_mlx90640()
 
+
     last_test_name = None
     last_connected_timestamp = None
 

@@ -1,4 +1,3 @@
-import adafruit_mlx90640
 import mlx.mlx90640 as mlx_lib
 import time
 import board
@@ -98,4 +97,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

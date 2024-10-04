@@ -1,6 +1,5 @@
 import adafruit_vl53l0x
 import time
-from scipy.interpolate import interp1d
 
 
 def init_vl53l0x(i2c):
@@ -56,15 +55,8 @@ measuredValues = [
     161,
 ]
 
-calibrationFunction = interp1d(
-    measuredValues, expectedValues, kind="linear", fill_value="extrapolate"
-)
-
-
 def read_range(sensor):
-    print(sensor.range)
     return sensor.range
-    # return calibrationFunction(sensor.range)
 
 
 def main():
