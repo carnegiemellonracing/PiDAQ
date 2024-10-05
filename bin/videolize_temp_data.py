@@ -1,5 +1,7 @@
 import time
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import sys
 import csv
@@ -25,7 +27,7 @@ diff_mode = args.diff
 # Create a temporary directory to hold frames
 temp_dir = tempfile.mkdtemp()
 
-plt.ion()
+# plt.ion()
 fig, ax = plt.subplots(figsize=(12, 7))
 
 # Set a constant scale (vmin, vmax) and use a blue-to-red gradient (coolwarm colormap)
@@ -53,6 +55,8 @@ ax.set_title('Thermal Camera Data')
 # Path for the frames_timestamps.txt file
 frames_txt_path = os.path.join(temp_dir, 'frames_timestamps.txt')
 
+line_num = 0
+
 # Open a file to save frame durations
 with open(frames_txt_path, 'w') as timestamp_file:
     with open(file_name, 'r') as file:
@@ -60,16 +64,21 @@ with open(frames_txt_path, 'w') as timestamp_file:
         header = next(reader)  # Skip the header row
 
         for row in reader:
-            # Assuming the first column holds the timestamp and second holds the frame data
+            line_num += 1
+            if(row[0] == "timestamp"):
+                # Not a number, repeating csv headers
+                continue
             raw_timestamp = float(row[0])
             if first_timestamp is None:
                 first_timestamp = raw_timestamp
             timestamp = raw_timestamp - first_timestamp
 
+            print(f"Processing line {line_num} - time {timestamp}", end='\r')
+
             if last_timestamp is not None:
-                frame_duration = (timestamp - last_timestamp) / speed_up_factor
+                frame_duration = max((timestamp - last_timestamp) / speed_up_factor, 0.05)
             else:
-                frame_duration = 0  # First frame has no previous frame
+                frame_duration = 0.05 / speed_up_factor  # Set a small default duration for the first frame
 
             last_timestamp = timestamp
             frame_data = row[1]
@@ -96,8 +105,8 @@ with open(frames_txt_path, 'w') as timestamp_file:
             plt.suptitle(f"Timestamp: {timestamp:.1f}", fontsize=16)
 
             # Redraw the figure to update the plot, colorbar, and title
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+            # fig.canvas.draw()
+            # fig.canvas.flush_events()
 
             # Save the current frame as an image file
             frame_file_name = os.path.join(temp_dir, f'frame_{int(timestamp * 100)}.png')
@@ -118,6 +127,9 @@ if args.min or args.max:
 file_name += ".mp4"
 
 output_video_name = os.path.join(script_dir,f"../videos/{file_name}")
+output_directory = os.path.dirname(output_video_name)
+if not os.path.exists(output_directory):
+    os.makedirs(output_directory)
 
 ffmpeg_cmd = [
     'ffmpeg', '-f', 'concat', '-safe', '0', '-i', frames_txt_path,
