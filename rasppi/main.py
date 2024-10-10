@@ -13,6 +13,9 @@ from sensors.max11617 import init_max11617, read_adc
 from sensors.vl53l0x import init_vl53l0x, read_range
 from sensors.mlx90640 import init_mlx90640, read_frame
 
+def log(msg):
+    print(f"[{time.time()}] {msg}")
+
 sio = socketio.Client()
 
 # get Pi ID from env var
@@ -61,17 +64,17 @@ vl53l0x_active = args.vl
 
 if DAQ_PI_ID is None:
     if is_test_mode:
-        print("WARNING: DAQ_PI_ID not set in environment. Using random value")
+        log("WARNING: DAQ_PI_ID not set in environment. Using random value")
         DAQ_PI_ID = random.randint(1, 100)
     else:
-        print("ERROR: DAQ_PI_ID not set in environment.")
+        log("ERROR: DAQ_PI_ID not set in environment.")
         exit(1)
 
-print(f"WS server address: {wss_ip}")
+log(f"WS server address: {wss_ip}")
 if is_test_mode:
-    print("Running in dry run test mode.")
+    log("Running in dry run test mode.")
 else:
-    print("Running in normal mode.")
+    log("Running in normal mode.")
 
 
 # Raspberry Pi test collection state machine
@@ -84,7 +87,7 @@ class TestingState:
         self.daq_pi_id = DAQ_PI_ID if DAQ_PI_ID is not None else random.randint(1, 100)
 
         if self.daq_pi_id is None:
-            print(
+            log(
                 "WARNING: Raspberry Pi ID could not be read from system. Setting a random ID for testing purposes."
             )
 
@@ -115,40 +118,42 @@ testStateManager = TestingState()
 @sio.event
 def connect():
     sio.emit("join_rpi", {"env": f"rpi{DAQ_PI_ID}"})
-    print("connection established")
+    log("connection established")
 
 @sio.event
 def connect_error(data):
-    print("The connection failed")
+    log("The connection failed")
 
 
 @sio.event
 def disconnect():
-    print("Disconnected from server")
+    log("Disconnected from server")
 
 
 @sio.on("start_test")
 def start_test(test_name):
-    print(f'starting test "{test_name}"')
+    log(f'starting test "{test_name}"')
     timestamp = datetime.datetime.now(datetime.timezone.utc)
     testStateManager.start_test(test_name=test_name, timestamp=timestamp)
 
 @sio.on("stop_test_rpi")
 def stop_test(test_name):
-    print(f'stopped test "{test_name}"')
+    log(f'stopped test "{test_name}"')
     testStateManager.set_state(False)
     testStateManager.set_name("")
 
 def try_connect():
+    time_before = time.time()
     if sio.connected:
         return
     try:
         sio.connect(wss_ip)
+        log(f"Succesfully connected to {wss_ip}. Took {time.time()-time_before} seconds.")
     except socketio.exceptions.ConnectionError:
-        print(f"Failed to connect to {wss_ip}")
+        log(f"Failed to connect to {wss_ip}. Took {time.time()-time_before} seconds. Retrying...")
         return
     except ValueError:
-        print("CLient is already connected")
+        log("Client is already connected")
         return
 
 def main():
@@ -172,17 +177,24 @@ def main():
     last_test_name = None
     last_connected_timestamp = None
 
+    last_loop_timestamp = time.time()
+
     loop_iterations = 0
     while True:
         loop_iterations += 1
 
+        if (time.time() - last_loop_timestamp) > 0.2:
+            log(f"Long loop iteration: {time.time() - last_loop_timestamp:.2f} seconds.")
+
+        last_loop_timestamp = time.time()
+
         if (not sio.connected) and (loop_iterations % 10 == 0):
-            print("Retrying connection")
+            log("Retrying connection")
             try_connect()
             # If last connected timestamp is more than five minutes in the past
             if last_connected_timestamp is not None:
                 if (datetime.datetime.now() - last_connected_timestamp).seconds > DISCONNECT_TIMEOUT_SECONDS:
-                    print("Connection lost timeout.")
+                    log("Connection lost timeout.")
                     exit(1)
 
         if testStateManager.get_state():
@@ -195,7 +207,6 @@ def main():
                 if last_test_name != testStateManager.get_name():
                     last_test_name = testStateManager.get_name()
                     file.write(CSV_HEADER)
-                print("got into the while loop")
                 # collect sensor data
                 if adc_active:
                     linpot_value = read_adc(adc)
@@ -217,7 +228,7 @@ def main():
                             },
                         )
                     else:
-                        print("Client is not connected, cannot emit event.")
+                        log("Client is not connected, cannot emit event.")
 
                 else:
                     formatted_data = {
@@ -238,7 +249,7 @@ def main():
                         )
                         last_connected_timestamp = datetime.datetime.now()
                     else:
-                        print("Client is not connected, cannot emit event.")
+                        log("Client is not connected, cannot emit event.")
 
                     file.write(make_csv_line(formatted_data))
 
