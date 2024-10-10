@@ -84,7 +84,7 @@ with open(frames_txt_path, 'w') as timestamp_file:
 
             if last_timestamp is not None:
                 gap = timestamp - last_timestamp
-                if gap > 1:
+                if gap > 0.2:
                     print(f"Warning: large gap detected between frames. This may cause stuttering in the video. FRAME = #{line_num} - TIME = {timestamp} - GAP = {gap}")
 
                 if gap < 0:
