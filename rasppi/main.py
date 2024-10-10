@@ -6,12 +6,15 @@ import argparse
 import board
 import busio
 import datetime
-
+import threading
 
 # sensors
 from sensors.max11617 import init_max11617, read_adc
 from sensors.vl53l0x import init_vl53l0x, read_range
 from sensors.mlx90640 import init_mlx90640, read_frame
+
+# Lock for controlling concurrent access to try_connect
+connect_lock = threading.Lock()
 
 def log(msg):
     print(f"[{time.time()}] {msg}")
@@ -31,7 +34,7 @@ def make_csv_line(data):
 
 def get_file_name(test_name, timestamp):
     return os.path.join(
-        "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}|{DAQ_PI_ID}.csv"
+        "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}_PI{DAQ_PI_ID}.csv"
     )
 
 def open_file_with_directories(file_path, mode='w'):
@@ -60,7 +63,6 @@ is_test_mode = args.test_mode
 adc_active = args.adc
 mlx_active = args.mlx
 vl53l0x_active = args.vl
-
 
 if DAQ_PI_ID is None:
     if is_test_mode:
@@ -143,9 +145,13 @@ def stop_test(test_name):
     testStateManager.set_name("")
 
 def try_connect():
-    time_before = time.time()
+    # Attempt to acquire lock without blocking, return if lock is held
+    if not connect_lock.acquire(blocking=False):
+        log("Another thread is already attempting to connect. Skipping this attempt.")
+        return
     if sio.connected:
         return
+    time_before = time.time()
     try:
         sio.connect(wss_ip)
         log(f"Succesfully connected to {wss_ip}. Took {time.time()-time_before} seconds.")
@@ -155,9 +161,17 @@ def try_connect():
     except ValueError:
         log("Client is already connected")
         return
+    finally:
+        connect_lock.release()
+
+def try_connect_background():
+    if not sio.connected:
+        # Run try_connect in a separate thread if not already connected
+        thread = threading.Thread(target=try_connect, daemon=True)
+        thread.start()
 
 def main():
-    # connect to ws server
+    # connect to ws server in the background
     try_connect()
 
     # init sensors
@@ -172,7 +186,6 @@ def main():
 
     if mlx_active:
         tt = init_mlx90640()
-
 
     last_test_name = None
     last_connected_timestamp = None
@@ -190,12 +203,15 @@ def main():
 
         if (not sio.connected) and (loop_iterations % 10 == 0):
             log("Retrying connection")
-            try_connect()
+            try_connect_background()
             # If last connected timestamp is more than five minutes in the past
             if last_connected_timestamp is not None:
                 if (datetime.datetime.now() - last_connected_timestamp).seconds > DISCONNECT_TIMEOUT_SECONDS:
                     log("Connection lost timeout.")
                     exit(1)
+
+        if sio.connected:
+            last_connected_timestamp = datetime.datetime.now()
 
         if testStateManager.get_state():
             with open_file_with_directories(
@@ -247,7 +263,6 @@ def main():
                                 "data": formatted_data,
                             },
                         )
-                        last_connected_timestamp = datetime.datetime.now()
                     else:
                         log("Client is not connected, cannot emit event.")
 
