@@ -59,6 +59,9 @@ line_num = 0
 
 # Open a file to save frame durations
 with open(frames_txt_path, 'w') as timestamp_file:
+    #  run  `wc -l filename` (very long file. Be careful)
+
+    total_lines = sum(1 for line in open(file_name))
     with open(file_name, 'r') as file:
         reader = csv.reader(file)
         header = next(reader)  # Skip the header row
@@ -73,10 +76,22 @@ with open(frames_txt_path, 'w') as timestamp_file:
                 first_timestamp = raw_timestamp
             timestamp = raw_timestamp - first_timestamp
 
-            print(f"Processing line {line_num} - time {timestamp}", end='\r')
+            progress_percent = (line_num / total_lines) * 100
+            formatted_percent = "{:.1f}%".format(progress_percent)
+            formatted_timestamp = "{:.1f}".format(timestamp)
+
+            print(f"{formatted_percent} Processing line {line_num} - time {formatted_timestamp}", end='\r')
 
             if last_timestamp is not None:
-                frame_duration = max((timestamp - last_timestamp) / speed_up_factor, 0.05)
+                gap = timestamp - last_timestamp
+                if gap > 1:
+                    print(f"Warning: large gap detected between frames. This may cause stuttering in the video. FRAME = #{line_num} - TIME = {timestamp} - GAP = {gap}")
+
+                if gap < 0:
+                    print(f"Warning: negative gap detected between frames. This SHOULD NOT HAPPEN. FRAME = #{line_num} - TIME = {timestamp} - GAP = {gap}")
+
+                frame_duration = max(gap / speed_up_factor, 0.05)
+
             else:
                 frame_duration = 0.05 / speed_up_factor  # Set a small default duration for the first frame
 
