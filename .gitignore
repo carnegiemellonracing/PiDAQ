@@ -21,6 +21,7 @@ server/logs/
 
 # Ignore Python virtual environment
 rasppi/venv/
+bin/venv/
 
 # Ignore Python bytecode
 rasppi/__pycache__/
