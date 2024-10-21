@@ -1,3 +1,3 @@
-# 24e DAQ v2 website
+# PiDAQ
 
-Used for connecting to RPi Zero 2 Ws on 24e and logging test data.
+**PiDAQ**: A Raspberry **Pi**-based **Data Acquisition** system for Carnegie Mellon Racing. Designed for 24e and 25e EV racecars.
