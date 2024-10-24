@@ -19,7 +19,7 @@ client/logs/
 server/logs/
 *.log
 
-# Ignore Python virtual environment
+# Ignore Python virtual environments
 rasppi/venv/
 bin/venv/
 
