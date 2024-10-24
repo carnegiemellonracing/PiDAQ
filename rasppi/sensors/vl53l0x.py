@@ -4,7 +4,7 @@ import time
 
 def init_vl53l0x(i2c):
     sensor = adafruit_vl53l0x.VL53L0X(i2c)
-    print('vl53l0x connected!')
+    print("vl53l0x connected!")
     return sensor
 
 
@@ -55,12 +55,13 @@ measuredValues = [
     161,
 ]
 
+
 def read_range(sensor):
     return sensor.range
 
 
 def main():
-    while 1:
+    while True:
         print(f"calibratedValue = {read_range()}")
         time.sleep(0.01)
 

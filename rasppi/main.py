@@ -1,25 +1,25 @@
 import os
 import time
-import socketio
+import paho.mqtt.client as mqtt
+import time
 import random
 import argparse
-import board
-import busio
+import json
 import datetime
 import threading
 
 # sensors
-from sensors.max11617 import init_max11617, read_adc
-from sensors.vl53l0x import init_vl53l0x, read_range
-from sensors.mlx90640 import init_mlx90640, read_frame
+# from sensors.max11617 import init_max11617, read_adc
+# from sensors.vl53l0x import init_vl53l0x, read_range
+# from sensors.mlx90640 import init_mlx90640, read_frame
 
 # Lock for controlling concurrent access to try_connect
-connect_lock = threading.Lock()
+lock = threading.Lock()
+
 
 def log(msg):
     print(f"[{time.time()}] {msg}")
 
-sio = socketio.Client()
 
 # get Pi ID from env var
 DAQ_PI_ID = os.getenv("DAQ_PI_ID")
@@ -28,16 +28,19 @@ DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 DISCONNECT_TIMEOUT_SECONDS = 300
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
+
 def make_csv_line(data):
     return f"{str(time.time())},\"{data['tire_temp_frame']}\",{data['linpot']},{data['ride_height']}\n"
 
 
 def get_file_name(test_name, timestamp):
     return os.path.join(
-        "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}_PI{DAQ_PI_ID}.csv"
+        "tests/",
+        f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}_PI{DAQ_PI_ID}.csv",
     )
 
-def open_file_with_directories(file_path, mode='w'):
+
+def open_file_with_directories(file_path, mode="w"):
     # Extract the directory from the file path
     directory = os.path.dirname(file_path)
 
@@ -47,6 +50,7 @@ def open_file_with_directories(file_path, mode='w'):
 
     # Now open the file
     return open(file_path, mode)
+
 
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
@@ -72,11 +76,15 @@ if DAQ_PI_ID is None:
         log("ERROR: DAQ_PI_ID not set in environment.")
         exit(1)
 
-log(f"WS server address: {wss_ip}")
 if is_test_mode:
     log("Running in dry run test mode.")
 else:
     log("Running in normal mode.")
+    import board
+    import busio
+    from sensors.max11617 import init_max11617, read_adc
+    from sensors.vl53l0x import init_vl53l0x, read_range
+    from sensors.mlx90640 import init_mlx90640, read_frame
 
 
 # Raspberry Pi test collection state machine
@@ -117,112 +125,73 @@ class TestingState:
 # testing vars
 testStateManager = TestingState()
 
-@sio.event
-def connect():
-    sio.emit("join_rpi", {"env": f"rpi{DAQ_PI_ID}"})
-    log("connection established")
 
-@sio.event
-def connect_error(data):
-    log("The connection failed")
+# MQTT topics
+commandTopic = "command_stream"
+dataTopic = "data_stream"
+BROKER_ADDRESS = "localhost"  # Local broker address
+BROKER_PORT = 1883  # Default MQTT port
 
-
-@sio.event
-def disconnect():
-    log("Disconnected from server")
+client_id = f"RPI-{DAQ_PI_ID})"
+client = mqtt.Client(client_id)
 
 
-@sio.on("start_test")
-def start_test(test_name):
-    log(f'starting test "{test_name}"')
-    timestamp = datetime.datetime.now(datetime.timezone.utc)
-    testStateManager.start_test(test_name=test_name, timestamp=timestamp)
+def on_connect(client, userdata, flags, rc):
+    print(f"Connected with result code {rc}")
 
-@sio.on("stop_test_rpi")
-def stop_test(test_name):
-    log(f'stopped test "{test_name}"')
-    testStateManager.set_state(False)
-    testStateManager.set_name("")
+    # Subscribe to a topic with QoS 1
+    client.subscribe("command_stream", qos=1)
 
-def try_connect():
-    # Attempt to acquire lock without blocking, return if lock is held
-    if not connect_lock.acquire(blocking=False):
-        log("Another thread is already attempting to connect. Skipping this attempt.")
+
+def on_message(client, userdata, msg):
+    print(f"Received message from topic '{msg.topic}': {msg.payload.decode()}")
+    if msg.topic != commandTopic:
         return
-    if sio.connected:
-        return
-    time_before = time.time()
-    try:
-        sio.connect(wss_ip)
-        log(f"Succesfully connected to {wss_ip}. Took {time.time()-time_before} seconds.")
-    except socketio.exceptions.ConnectionError:
-        log(f"Failed to connect to {wss_ip}. Took {time.time()-time_before} seconds. Retrying...")
-        return
-    except ValueError:
-        log("Client is already connected")
-        return
-    finally:
-        connect_lock.release()
+    data = json.loads(msg.payload.decode())
+    command = data["command"]
 
-def try_connect_background():
-    if not sio.connected:
-        # Run try_connect in a separate thread if not already connected
-        thread = threading.Thread(target=try_connect, daemon=True)
-        thread.start()
+    if command == "start":
+        test_name = data["test_name"]
+        log(f'starting test "{test_name}"')
+        timestamp = datetime.datetime.now(datetime.timezone.utc)
+        testStateManager.start_test(test_name=test_name, timestamp=timestamp)
 
-def main():
-    # connect to ws server in the background
-    try_connect()
+    if command == "stop":
+        test_name = data["test_name"]
+        log(f'stopped test "{test_name}"')
+        testStateManager.set_state(False)
+        testStateManager.set_name("")
 
-    # init sensors
-    i2c1 = busio.I2C(board.SCL, board.SDA)
-    i2c0 = busio.I2C(board.D1, board.D0)
 
-    if adc_active:
-        adc = init_max11617(i2c0)
+# Assign event handlers
+client.on_connect = on_connect
+client.on_message = on_message
 
-    if vl53l0x_active:
-        tof = init_vl53l0x(i2c0)
 
-    if mlx_active:
-        tt = init_mlx90640()
-
-    last_test_name = None
-    last_connected_timestamp = None
-
-    last_loop_timestamp = time.time()
-
-    loop_iterations = 0
+def read_sensors():
     while True:
-        loop_iterations += 1
 
-        if (time.time() - last_loop_timestamp) > 0.2:
-            log(f"Long loop iteration: {time.time() - last_loop_timestamp:.2f} seconds.")
+        with lock:
+            if not testStateManager.get_state():
+                print("Data collection stopped.")
+                continue
 
-        last_loop_timestamp = time.time()
+        try:
 
-        if (not sio.connected) and (loop_iterations % 10 == 0):
-            log("Retrying connection")
-            try_connect_background()
-            # If last connected timestamp is more than five minutes in the past
-            if last_connected_timestamp is not None:
-                if (datetime.datetime.now() - last_connected_timestamp).seconds > DISCONNECT_TIMEOUT_SECONDS:
-                    log("Connection lost timeout.")
-                    exit(1)
-
-        if sio.connected:
-            last_connected_timestamp = datetime.datetime.now()
-
-        if testStateManager.get_state():
-            with open_file_with_directories(
+            file_name = (
                 get_file_name(
                     testStateManager.get_name(), testStateManager.get_timestamp()
                 ),
+            )
+
+            with open_file_with_directories(
+                file_name,
                 "a",
             ) as file:
                 if last_test_name != testStateManager.get_name():
                     last_test_name = testStateManager.get_name()
                     file.write(CSV_HEADER)
+
                 # collect sensor data
                 if adc_active:
                     linpot_value = read_adc(adc)
@@ -231,42 +200,65 @@ def main():
                 if mlx_active:
                     tire_temp_frame = read_frame(tt)
 
-                # testing mode
-                if is_test_mode:
+                # dry-run mode: sends random data back to server
+                if testStateManager.dry_run:
                     dv = random.randint(1, 100)
                     idv = int(time.time())
-                    if sio.connected:
-                        sio.emit(
-                            "test_data",
-                            {
-                                "testName": testStateManager.get_name(),
-                                "data": [idv, dv],
-                            },
-                        )
-                    else:
-                        log("Client is not connected, cannot emit event.")
 
+                    msg = {
+                        "testName": testStateManager.get_name(),
+                        "data": [idv, dv],
+                    }
+
+                    client.publish(dataTopic, json.loads(msg), {qos: 0})
+
+                # real shit dawg
                 else:
                     formatted_data = {
-                        "tire_temp_frame": (
-                            tire_temp_frame if mlx_active else False
-                        ),
+                        "tire_temp_frame": (tire_temp_frame if mlx_active else False),
                         "linpot": linpot_value if adc_active else False,
                         "ride_height": (ride_height_value if vl53l0x_active else False),
-                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                        "timestamp": datetime.datetime.now(
+                            datetime.timezone.utc
+                        ).isoformat(),
                     }
-                    if sio.connected:
-                        sio.emit(
-                            "test_data",
-                            {
-                                "testName": testStateManager.get_name(),
-                                "data": formatted_data,
-                            },
-                        )
-                    else:
-                        log("Client is not connected, cannot emit event.")
+
+                    msg = {
+                        "testName": testStateManager.get_name(),
+                        "data": formatted_data,
+                    }
+
+                    client.publish(dataTopic, json.loads(msg), {qos: 0})
 
                     file.write(make_csv_line(formatted_data))
+
+        except Exception as e:
+            print(f"Error reading frame: {e}")
+
+
+def main():
+
+    # Connect to the broker with the custom client ID
+    client.connect(BROKER_ADDRESS, BROKER_PORT, keepalive=60)
+
+    # Start a non-blocking network loop
+    client.loop_start()
+
+    # init sensors
+    if not testStateManager.dry_run:
+        i2c1 = busio.I2C(board.SCL, board.SDA)
+        i2c0 = busio.I2C(board.D1, board.D0)
+
+        if adc_active:
+            adc = init_max11617(i2c0)
+
+        if vl53l0x_active:
+            tof = init_vl53l0x(i2c0)
+
+        if mlx_active:
+            tt = init_mlx90640()
+
+        # open file, write data
 
 
 if __name__ == "__main__":
