@@ -33,6 +33,7 @@ export function useSocket() {
 
             socket.on("all_data", (data) => {
                 setAllData(data);
+                console.log(data);
             });
         }
     }, [socket]);
