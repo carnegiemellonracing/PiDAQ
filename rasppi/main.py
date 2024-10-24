@@ -13,6 +13,11 @@ BROKER_ADDRESS = "localhost"
 BROKER_PORT = 1883
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
+
+def log(msg):
+    print(f"[{datetime.datetime.now()}] {msg}")
+
+
 # Thread-safe queue for MQTT messages
 mqtt_queue = queue.Queue()
 
@@ -23,8 +28,8 @@ lock = threading.Lock()
 DAQ_PI_ID = os.getenv("DAQ_PI_ID") or f"RPI-{random.randint(1, 100)}"
 
 # MQTT topics
-COMMAND_TOPIC = "command_stream"
-DATA_TOPIC = "data_stream"
+COMMAND_TOPIC = "commands"
+DATA_TOPIC = "data"
 STATUS_TOPIC = "status"
 
 # Command-line argument parsing
@@ -41,10 +46,32 @@ adc_active = args.adc
 mlx_active = args.mlx
 vl53l0x_active = args.vl
 
+# Setting the client ID for this RPi
+
+if DAQ_PI_ID is None:
+    if is_test_mode:
+        log("WARNING: DAQ_PI_ID not set in environment. Using random value")
+        DAQ_PI_ID = random.randint(1, 100)
+    else:
+        log("ERROR: DAQ_PI_ID not set in environment.")
+        exit(1)
+
+# Conditionally importing libraries
+
+if is_test_mode:
+    log("Running in dry run test mode.")
+else:
+    log("Running in normal mode.")
+    import board
+    import busio
+    from sensors.max11617 import init_max11617, read_adc
+    from sensors.vl53l0x import init_vl53l0x, read_range
+    from sensors.mlx90640 import init_mlx90640, read_frame
+
+
 # Initialize MQTT client: custom client ID, LWT
-client_id = f"RPI-{DAQ_PI_ID}"
-client = mqtt.Client(client_id)
-lwt_payload = {"id": client_id, "status": "offline"}
+client = mqtt.Client()
+lwt_payload = {"id": DAQ_PI_ID, "status": "offline"}
 client.will_set(STATUS_TOPIC, payload=json.dumps(lwt_payload), qos=1, retain=True)
 
 
@@ -69,15 +96,11 @@ class TestingState:
 testStateManager = TestingState()
 
 
-def log(msg):
-    print(f"[{datetime.datetime.now()}] {msg}")
-
-
 # MQTT event listeners
 def on_connect(client, userdata, flags, rc):
     log(f"Connected to MQTT broker with result code {rc}")
     client.subscribe(COMMAND_TOPIC, qos=1)
-    payload = {"id": client_id, "status": "online"}
+    payload = {"id": DAQ_PI_ID, "status": "online"}
     client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
 
 
@@ -101,7 +124,7 @@ client.on_message = on_message
 
 # Thread to handle MQTT communication and publish messages from the queue.
 def mqtt_thread():
-    client.connect(BROKER_ADDRESS, BROKER_PORT, keepalive=60)
+    client.connect(BROKER_ADDRESS, BROKER_PORT, keepalive=5)
     client.loop_start()  # Start MQTT loop in the background
 
     while True:
@@ -110,7 +133,7 @@ def mqtt_thread():
             msg = mqtt_queue.get()  # This will block until a message is available
             topic, payload = msg
             client.publish(topic, payload, qos=0)
-            log(f"Published to {topic}: {payload}")
+            # log(f"Published to {topic}: {payload}")
             mqtt_queue.task_done()  # Mark the task as done
         except Exception as e:
             log(f"Error in MQTT thread: {e}")
@@ -134,6 +157,7 @@ def read_sensors():
             }
 
             msg = {
+                "id": DAQ_PI_ID,
                 "testName": testStateManager.test_name,
                 "data": data,
             }
@@ -141,8 +165,8 @@ def read_sensors():
             # Place the message into the MQTT queue
             mqtt_queue.put((DATA_TOPIC, json.dumps(msg)))
 
-            log(f"Collected sensor data: {msg}")
-            time.sleep(1)  # Adjust as needed for data rate
+            # log(f"Collected sensor data: {msg}")
+            time.sleep(0.2)  # Adjust as needed for data rate
 
         except Exception as e:
             log(f"Error reading sensors: {e}")
@@ -160,7 +184,7 @@ def main():
     # Keep the main thread alive to allow other threads to run
     try:
         while True:
-            time.sleep(1)
+            time.sleep(0.2)
     except KeyboardInterrupt:
         log("Shutting down...")
         client.disconnect()

@@ -21,8 +21,8 @@ const WSS_PORT = 3001;
 // MQTT Setup
 const brokerUrl = "mqtt://test.mosquitto.org";
 mqtt_client = mqtt.connect(brokerUrl);
-const COMMAND_TOPIC = "command_stream";
-const DATA_TOPIC = "data_stream";
+const COMMAND_TOPIC = "commands";
+const DATA_TOPIC = "data";
 const STATUS_TOPIC = "status";
 
 // Test data state manager
