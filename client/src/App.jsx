@@ -1,11 +1,7 @@
 import "./App.css";
 import { useState } from "react";
 
-import StopTestBtn from "./components/StopTestBtn";
 import { useSocket } from "./hooks/useSocket";
-import PIsList from "./components/PIsList";
-import TestsList from "./components/TestsList";
-import TestDisplay from "./components/TestDisplay";
 import StoppedView from "./view/StoppedView";
 import RunningTestView from "./view/RunningTestView";
 

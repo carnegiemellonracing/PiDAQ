@@ -27,7 +27,7 @@ const STATUS_TOPIC = "status";
 
 // Test data state manager
 class ServerStateManager {
-    constructor(parameters) {
+    constructor() {
         this.connectedPis = new Set();
         this.testData = {};
         this.runningTest = "";
@@ -141,6 +141,11 @@ io.on("connection", (socket) => {
         socket.join("client");
         console.log(`Client ${socket.id} has joined`);
 
+        const message = {
+            command: "get_status",
+        };
+        mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
+
         // Send the current allData to the client
         io.to("client").emit("status_rpis", serverState.getPisAsArray());
         io.to("client").emit("status_test", serverState.getTestName());
@@ -210,7 +215,7 @@ mqtt_client.on("connect", () => {
     console.log("Connected to MQTT broker.");
 
     // Subscribe to topics
-    mqtt_client.subscribe(COMMAND_TOPIC, { qos: 1 });
+    // mqtt_client.subscribe(COMMAND_TOPIC, { qos: 1 });
     mqtt_client.subscribe(DATA_TOPIC, { qos: 0 });
     mqtt_client.subscribe(STATUS_TOPIC, { qos: 1 });
 });
@@ -219,7 +224,6 @@ mqtt_client.on("connect", () => {
 mqtt_client.on("message", (topic, message) => {
     // console.log(`Received message from ${topic}: ${message.toString()}`);
     // Status messages
-    console.log(serverState.getAllData());
     if (topic === STATUS_TOPIC) {
         const data = JSON.parse(message.toString());
         const { id, status } = data;
@@ -232,16 +236,17 @@ mqtt_client.on("message", (topic, message) => {
 
     // Sensor data
     if (topic === DATA_TOPIC) {
-        const test_data = JSON.parse(message.toString());
-        const { id, testName, test_data: dataPoint } = test_data;
+        const data = JSON.parse(message.toString());
+        const { id, testName, test_data: dataPoint } = data;
 
         // calculate average temps
-        const average_temp = test_data.tire_temp_frame
-            ? test_data.tire_temp_frame.reduce((acc, v) => {
+        const average_temp = dataPoint.tire_temp_frame
+            ? dataPoint.tire_temp_frame.reduce((acc, v) => {
                   return acc + v;
-              }, 0) / test_data.tire_temp_frame.length
+              }, 0) / dataPoint.tire_temp_frame.length
             : false;
-        test_data["average_temp"] = average_temp;
+
+        dataPoint.tire_temp_frame = average_temp;
 
         // update server state
         serverState.addDataPoint(testName, dataPoint, id);

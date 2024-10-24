@@ -66,10 +66,10 @@ export function useSocket() {
             });
         };
 
-        if (socket) {
-            socket.on("test_data", cb);
-            return () => socket.off("test_data", cb);
-        }
+        // if (socket) {
+        //     socket.on("test_data", cb);
+        //     return () => socket.off("test_data", cb);
+        // }
     }, [socket, allData, allRPI]);
 
     const emit = (...params) => {

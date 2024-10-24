@@ -154,6 +154,13 @@ def on_message(client, userdata, msg):
 
     if msg.topic == COMMAND_TOPIC:
         data = json.loads(msg.payload.decode())
+        
+        # get initial status of PIs
+        if data["command"] == "get_status":
+            payload = {"id": DAQ_PI_ID, "status": "online"}
+            client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
+            return
+        
         test_name = data["test_name"]
         if data["command"] == "start":
             testStateManager.start_test(test_name, datetime.datetime.now())
@@ -195,9 +202,13 @@ def read_sensors():
         try:
             # Prepare sensor data
             if (testStateManager.test_state):
+                time_temp_frame = []
+                for i in range(20):
+                    time_temp_frame.append(random.randint(20, 40))
+
                 data = {
                     "timestamp": datetime.datetime.utcnow().isoformat(),
-                    "tire_temp_frame": random.randint(20, 40) if mlx_active else None,
+                    "tire_temp_frame": time_temp_frame if mlx_active else None,
                     "linpot": random.randint(1, 100) if adc_active else None,
                     "ride_height": random.randint(1, 50) if vl53l0x_active else None,
                 }
@@ -233,6 +244,10 @@ def main():
             time.sleep(0.2)
     except KeyboardInterrupt:
         log("Shutting down...")
+        
+        payload = {"id": DAQ_PI_ID, "status": "offline"}
+        client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
+        
         client.disconnect()
 
 
