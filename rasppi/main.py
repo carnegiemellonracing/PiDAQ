@@ -264,9 +264,13 @@ def read_sensors():
 
             else:
                 # Generate random data in dry-run mode
+                tire_temp_frame = []
+                for i in range(24*32):
+                    tire_temp_frame.append(random.randint(20,40))
+
                 data = {
                     "timestamp": datetime.datetime.utcnow().isoformat(),
-                    "tire_temp_frame": random.randint(20, 40),
+                    "tire_temp_frame": tire_temp_frame,
                     "linpot": random.randint(1, 100),
                     "ride_height": random.randint(1, 50),
                 }

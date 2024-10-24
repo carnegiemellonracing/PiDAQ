@@ -76,7 +76,7 @@ export default function Graphs({ data, filterRecent, showImage, testName }) {
         .map((entry, idx) => ({
             name: `${idx + 1}`,
             independent: timestampFormatter(entry.timestamp),
-            dependent: entry.tire_temp_frame,
+            dependent: entry.average_temp,
         }))
         .filter((entry) => entry.dependent !== false);
 

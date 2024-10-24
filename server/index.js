@@ -237,7 +237,7 @@ mqtt_client.on("message", (topic, message) => {
     // Sensor data
     if (topic === DATA_TOPIC) {
         const data = JSON.parse(message.toString());
-        const { id, testName, test_data: dataPoint } = data;
+        const { id, testName, data: dataPoint } = data;
 
         // calculate average temps
         const average_temp = dataPoint.tire_temp_frame
@@ -246,7 +246,7 @@ mqtt_client.on("message", (topic, message) => {
               }, 0) / dataPoint.tire_temp_frame.length
             : false;
 
-        dataPoint.tire_temp_frame = average_temp;
+        dataPoint.average_temp = average_temp;
 
         // update server state
         serverState.addDataPoint(testName, dataPoint, id);
