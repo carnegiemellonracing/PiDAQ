@@ -9,9 +9,34 @@ import threading
 import queue
 
 # Constants
-BROKER_ADDRESS = "localhost"
+BROKER_ADDRESS = "test.mosquitto.org"
 BROKER_PORT = 1883
+
+# toggle sensors
+DISCONNECT_TIMEOUT_SECONDS = 300
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
+
+def make_csv_line(data):
+    return f"{str(time.time())},\"{data['tire_temp_frame']}\",{data['linpot']},{data['ride_height']}\n"
+
+
+def get_file_name(test_name, timestamp):
+    return os.path.join(
+        "tests/",
+        f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}_PI{DAQ_PI_ID}.csv",
+    )
+
+
+def open_file_with_directories(file_path, mode="w"):
+    # Extract the directory from the file path
+    directory = os.path.dirname(file_path)
+
+    # Check if the directory exists, and if not, create it
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    # Now open the file
+    return open(file_path, mode)
 
 
 def log(msg):
@@ -25,7 +50,7 @@ mqtt_queue = queue.Queue()
 lock = threading.Lock()
 
 # Get Pi ID from environment or set randomly in test mode
-DAQ_PI_ID = os.getenv("DAQ_PI_ID") or f"RPI-{random.randint(1, 100)}"
+DAQ_PI_ID = os.getenv("DAQ_PI_ID") or f"RPI-{random.randint(1000, 9999)}"
 
 # MQTT topics
 COMMAND_TOPIC = "commands"
@@ -34,7 +59,6 @@ STATUS_TOPIC = "status"
 
 # Command-line argument parsing
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
-parser.add_argument("ip_address", type=str, help="IP address of the WebSocket Server")
 parser.add_argument("-t", "--test_mode", action="store_true", help="Run in test mode")
 parser.add_argument("-a", "--adc", action="store_true", help="Enable ADC sensor")
 parser.add_argument("-m", "--mlx", action="store_true", help="Enable MLX90640 sensor")
@@ -78,13 +102,34 @@ client.will_set(STATUS_TOPIC, payload=json.dumps(lwt_payload), qos=1, retain=Tru
 class TestingState:
     def __init__(self):
         self.test_state = False
+        self.test_time_stamp = None
         self.test_name = ""
-        self.test_timestamp = None
-        self.dry_run = is_test_mode
+        self.dry_run = bool(is_test_mode)
+        self.daq_pi_id = DAQ_PI_ID if DAQ_PI_ID is not None else random.randint(1, 100)
 
-    def start_test(self, name, timestamp):
-        self.test_name = name
-        self.test_timestamp = timestamp
+        if self.daq_pi_id is None:
+            log(
+                "WARNING: Raspberry Pi ID could not be read from system. Setting a random ID for testing purposes."
+        )
+
+    def get_name(self):
+        return self.test_name
+
+    def set_name(self, test_name):
+        self.test_name = test_name
+
+    def get_state(self):
+        return self.test_state
+
+    def set_state(self, test_state):
+        self.test_state = test_state
+
+    def get_timestamp(self):
+        return self.test_time_stamp
+
+    def start_test(self, test_name, timestamp):
+        self.test_name = test_name
+        self.test_time_stamp = timestamp
         self.test_state = True
 
     def stop_test(self):
