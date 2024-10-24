@@ -55,19 +55,19 @@ class ServerStateManager {
     // start a new test
     startTest(testName) {
         // create entry in testDate
-        // const timeStamp = Date.now();
-        // const testName = `${testName}---${timeStamp}`
-        this.testData[testName] = {
+        const timeStamp = Date.now();
+
+        // update running test
+        this.runningTest = `${testName}---${timeStamp}`;
+
+        this.testData[this.runningTest] = {
             info: {
                 time: timeStamp,
-                name: testName,
+                name: this.runningTest,
                 senders: [],
             },
             data: {},
         };
-
-        // update running test
-        this.runningTest = testName;
     }
 
     // returns all test data
@@ -77,33 +77,38 @@ class ServerStateManager {
 
     // add a data point
     addDataPoint(testName, data, pi_id) {
-        if (this.testData[testName]) {
+        if (this.testData[this.runningTest]) {
             // if sender PiID is not in list of senders, add it
-            if (!this.testData[testName]["info"]["senders"].includes(pi_id)) {
-                this.testData[testName]["info"]["senders"].push(pi_id);
+            if (
+                !this.testData[this.runningTest]["info"]["senders"].includes(
+                    pi_id
+                )
+            ) {
+                this.testData[this.runningTest]["info"]["senders"].push(pi_id);
             }
 
             // if the data property doesn't contain the sender ID,
             // create a new array of data points
-            if (!this.testData[testName]["data"][pi_id]) {
-                this.testData[testName]["data"][pi_id] = [];
+            if (!this.testData[this.runningTest]["data"][pi_id]) {
+                this.testData[this.runningTest]["data"][pi_id] = [];
             }
 
             // push your data point
-            this.testData[testName]["data"][pi_id].push(data);
+            this.testData[this.runningTest]["data"][pi_id].push(data);
+            // console.log(data);
         }
     }
 
     getTestName() {
-        return this.testName;
+        return this.runningTest;
     }
 
     stopTest(testName) {
-        this.runningTest = null;
+        this.runningTest = "";
     }
 
     isTestRunning() {
-        return !!strValue;
+        return !!this.runningTest;
     }
 }
 
@@ -155,14 +160,20 @@ io.on("connection", (socket) => {
     // tells all connected Pis to start collecting data
     socket.on("start_test", (data) => {
         if (serverState.isTestRunning()) return;
-        serverState.startTest(data.testName);
+
+        const testName = data.testName;
+        serverState.startTest(testName);
         console.log(`Starting test "${testName}"`);
 
         // send command to MQTT clients
-        message = { command: "start", test_name: runningTest };
+        const message = {
+            command: "start",
+            test_name: testName,
+        };
         mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
 
-        io.to("client").emit("all_data", allData);
+        io.to("client").emit("all_data", serverState.getAllData());
+        io.to("client").emit("status_test", serverState.getTestName());
     });
 
     // Frontend to WSS: test stop messages
@@ -177,15 +188,19 @@ io.on("connection", (socket) => {
         console.log(`Stopping test "${testName}"`);
 
         // send command to MQTT clients
-        message = { command: "stop", test_name: runningTest };
+        const message = {
+            command: "stop",
+            test_name: serverState.getTestName(),
+        };
         mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
 
-        io.to("client").emit("status_test", runningTest);
+        serverState.stopTest();
+        io.to("client").emit("status_test", serverState.getTestName());
     });
 
     // returns the status of the current test
     socket.on("get_tests", () => {
-        io.to("client").emit("status_test", runningTest);
+        io.to("client").emit("status_test", serverState.getTestName());
     });
 });
 
@@ -202,28 +217,23 @@ mqtt_client.on("connect", () => {
 
 // Handle incoming messages from the subscribed topic
 mqtt_client.on("message", (topic, message) => {
-    console.log(`Received message from ${topic}: ${message.toString()}`);
+    // console.log(`Received message from ${topic}: ${message.toString()}`);
     // Status messages
+    console.log(serverState.getAllData());
     if (topic === STATUS_TOPIC) {
-        try {
-            const data = JSON.parse(message.toString());
-            const { id, status } = data;
+        const data = JSON.parse(message.toString());
+        const { id, status } = data;
 
-            if (status === "online") serverState.addPi(id);
-            if (status === "offline") serverState.removePi(id);
+        if (status === "online") serverState.addPi(id);
+        if (status === "offline") serverState.removePi(id);
 
-            console.log(serverState.getPis());
-            io.to("client").emit("status_rpis", serverState.getPisAsArray());
-        } catch (e) {
-            console.log(e);
-            console.log(message.toString());
-        }
+        io.to("client").emit("status_rpis", serverState.getPisAsArray());
     }
 
     // Sensor data
     if (topic === DATA_TOPIC) {
-        const data = JSON.parse(message.toString());
-        const { id, testName, data: test_data } = data;
+        const test_data = JSON.parse(message.toString());
+        const { id, testName, test_data: dataPoint } = test_data;
 
         // calculate average temps
         const average_temp = test_data.tire_temp_frame
@@ -234,14 +244,10 @@ mqtt_client.on("message", (topic, message) => {
         test_data["average_temp"] = average_temp;
 
         // update server state
-        serverState.addDataPoint(testName, test_data, id);
+        serverState.addDataPoint(testName, dataPoint, id);
 
         // broadcast to web clients
-        io.to("client").emit("test_data", {
-            testName,
-            data: test_data,
-            sender,
-        });
+        io.to("client").emit("all_data", serverState.getAllData());
     }
 });
 

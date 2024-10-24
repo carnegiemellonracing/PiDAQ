@@ -194,24 +194,25 @@ def read_sensors():
 
         try:
             # Prepare sensor data
-            data = {
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "tire_temp_frame": random.randint(20, 40) if mlx_active else None,
-                "linpot": random.randint(1, 100) if adc_active else None,
-                "ride_height": random.randint(1, 50) if vl53l0x_active else None,
-            }
+            if (testStateManager.test_state):
+                data = {
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
+                    "tire_temp_frame": random.randint(20, 40) if mlx_active else None,
+                    "linpot": random.randint(1, 100) if adc_active else None,
+                    "ride_height": random.randint(1, 50) if vl53l0x_active else None,
+                }
 
-            msg = {
-                "id": DAQ_PI_ID,
-                "testName": testStateManager.test_name,
-                "data": data,
-            }
+                msg = {
+                    "id": DAQ_PI_ID,
+                    "testName": testStateManager.test_name,
+                    "test_data": data,
+                }
 
-            # Place the message into the MQTT queue
-            mqtt_queue.put((DATA_TOPIC, json.dumps(msg)))
+                # Place the message into the MQTT queue
+                mqtt_queue.put((DATA_TOPIC, json.dumps(msg)))
 
-            # log(f"Collected sensor data: {msg}")
-            time.sleep(0.2)  # Adjust as needed for data rate
+                # log(f"Collected sensor data: {msg}")
+                time.sleep(0.2)  # Adjust as needed for data rate
 
         except Exception as e:
             log(f"Error reading sensors: {e}")
