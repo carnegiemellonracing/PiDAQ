@@ -48,3 +48,6 @@ rasppi/tests/*
 
 # Ignore video files
 videos/*
+
+#Ignore firebase key
+server/firebase/serviceAccountKey.json

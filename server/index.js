@@ -3,13 +3,6 @@ import { createServer } from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import mqtt from "mqtt";
-import { initializeApp, applicationDefault, cert } from "firebase-admin/app";
-import {
-    getFirestore,
-    Timestamp,
-    FieldValue,
-    Filter,
-} from "firebase-admin/firestore";
 
 // SocketIO WSS setup
 const app = express();
@@ -31,9 +24,6 @@ const mqtt_client = mqtt.connect(brokerUrl);
 const COMMAND_TOPIC = "commands";
 const DATA_TOPIC = "data";
 const STATUS_TOPIC = "status";
-
-initializeApp();
-const db = getFirestore();
 
 // Test data state manager
 class ServerStateManager {
