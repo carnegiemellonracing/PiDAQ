@@ -32,6 +32,9 @@ const COMMAND_TOPIC = "commands";
 const DATA_TOPIC = "data";
 const STATUS_TOPIC = "status";
 
+initializeApp();
+const db = getFirestore();
+
 // Test data state manager
 class ServerStateManager {
     constructor() {
