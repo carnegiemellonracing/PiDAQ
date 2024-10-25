@@ -3,6 +3,7 @@ import { createServer } from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import mqtt from "mqtt";
+import { putTestData } from "./firebase/db.js";
 
 // SocketIO WSS setup
 const app = express();
@@ -55,14 +56,14 @@ class ServerStateManager {
     // start a new test
     startTest(testName) {
         // create entry in testDate
-        const timeStamp = Date.now();
+        const timeStamp = new Date();
 
         // update running test
-        this.runningTest = `${testName}---${timeStamp}`;
+        this.runningTest = `${testName}---${Number(timeStamp)}`;
 
         this.testData[this.runningTest] = {
             info: {
-                time: timeStamp,
+                startTime: timeStamp,
                 name: this.runningTest,
                 senders: [],
             },
@@ -76,7 +77,8 @@ class ServerStateManager {
     }
 
     // add a data point
-    addDataPoint(testName, data, pi_id) {
+    addDataPoint(data, pi_id) {
+        data.timestamp = new Date(data.timestamp);
         if (this.testData[this.runningTest]) {
             // if sender PiID is not in list of senders, add it
             if (
@@ -97,6 +99,10 @@ class ServerStateManager {
             this.testData[this.runningTest]["data"][pi_id].push(data);
             // console.log(data);
         }
+    }
+
+    getTestData(testName) {
+        return this.getAllData()[testName];
     }
 
     getTestName() {
@@ -168,7 +174,7 @@ io.on("connection", (socket) => {
 
         const testName = data.testName;
         serverState.startTest(testName);
-        console.log(`Starting test "${testName}"`);
+        console.log(`Starting test "${serverState.getTestName()}"`);
 
         // send command to MQTT clients
         const message = {
@@ -183,7 +189,7 @@ io.on("connection", (socket) => {
 
     // Frontend to WSS: test stop messages
     // tells all connected Pis to stop collecting data
-    socket.on("stop_test_server", (data) => {
+    socket.on("stop_test_server", async (data) => {
         const testName = data.testName;
         if (serverState.getTestName() != testName) {
             console.error(`Error: Test "${testName}" is not running`);
@@ -198,6 +204,10 @@ io.on("connection", (socket) => {
             test_name: serverState.getTestName(),
         };
         mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
+
+        console.log(serverState.getAllData());
+        // Uncomment to send data to firestore
+        // await putTestData(serverState.getTestData(serverState.getTestName()));
 
         serverState.stopTest();
         io.to("client").emit("status_test", serverState.getTestName());
@@ -249,7 +259,7 @@ mqtt_client.on("message", (topic, message) => {
         dataPoint.average_temp = average_temp;
 
         // update server state
-        serverState.addDataPoint(testName, dataPoint, id);
+        serverState.addDataPoint(dataPoint, id);
 
         // broadcast to web clients
         io.to("client").emit("all_data", serverState.getAllData());
