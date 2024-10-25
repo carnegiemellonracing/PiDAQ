@@ -195,7 +195,7 @@ def on_connect(client, userdata, flags, rc):
 
 
 def on_message(client, userdata, msg):
-    log(f"Received message from topic '{msg.topic}': {msg.payload.decode()}")
+    # log(f"Received message from topic '{msg.topic}': {msg.payload.decode()}")
 
     if msg.topic == COMMAND_TOPIC:
         data = json.loads(msg.payload.decode())
@@ -204,6 +204,7 @@ def on_message(client, userdata, msg):
         if data["command"] == "get_status":
             payload = {"id": DAQ_PI_ID, "status": "online"}
             client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
+            log("Sent online status")
             return
         
         test_name = data["test_name"]

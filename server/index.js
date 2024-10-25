@@ -3,6 +3,13 @@ import { createServer } from "http";
 import cors from "cors";
 import { Server } from "socket.io";
 import mqtt from "mqtt";
+import { initializeApp, applicationDefault, cert } from "firebase-admin/app";
+import {
+    getFirestore,
+    Timestamp,
+    FieldValue,
+    Filter,
+} from "firebase-admin/firestore";
 
 // SocketIO WSS setup
 const app = express();
