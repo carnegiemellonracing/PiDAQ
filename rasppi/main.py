@@ -199,13 +199,13 @@ def on_message(client, userdata, msg):
 
     if msg.topic == COMMAND_TOPIC:
         data = json.loads(msg.payload.decode())
-        
+
         # get initial status of PIs
         if data["command"] == "get_status":
             payload = {"id": DAQ_PI_ID, "status": "online"}
             client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
             return
-        
+
         test_name = data["test_name"]
         if data["command"] == "start":
             testStateManager.start_test(test_name, datetime.datetime.now())
@@ -237,6 +237,15 @@ def mqtt_thread():
             log(f"Error in MQTT thread: {e}")
 
 
+def compute_average_temp(data_frame):
+    """Compute the average temperature from the MLX90640 data frame."""
+    data_frame = [float(temp) for temp in data_frame]
+    if len(data_frame) != 768:
+        raise ValueError("Data frame must contain exactly 768 temperature values.")
+
+    return sum(data_frame) / len(data_frame)
+
+
 # Thread to collect sensor data and place it in the MQTT queue.
 def read_sensors():
     while True:
@@ -245,54 +254,60 @@ def read_sensors():
                 time.sleep(1)  # Avoid busy waiting
                 continue
 
-        try:
-            if not testStateManager.get_state():
-                continue
+            # try:
+        if not testStateManager.get_state():
+            continue
 
-            if not is_test_mode:
-                # Collect real sensor data using pre-initialized sensors
-                mlx = sensors.get("mlx")
-                adc = sensors.get("adc")
-                vl53 = sensors.get("vl53")
+        if not is_test_mode:
+            # Collect real sensor data using pre-initialized sensors
+            mlx = sensors.get("mlx")
+            adc = sensors.get("adc")
+            vl53 = sensors.get("vl53")
 
-                data = {
-                    "timestamp": datetime.datetime.utcnow().isoformat(),
-                    "tire_temp_frame": (read_frame(mlx) if mlx_active else None),
-                    "linpot": read_adc(adc) if adc_active else None,
-                    "ride_height": (read_range(vl53) if vl53l0x_active else None),
-                }
-
-            else:
-                # Generate random data in dry-run mode
-                tire_temp_frame = []
-                for i in range(24*32):
-                    tire_temp_frame.append(random.randint(20,40))
-
-                data = {
-                    "timestamp": datetime.datetime.utcnow().isoformat(),
-                    "tire_temp_frame": tire_temp_frame,
-                    "linpot": random.randint(1, 100),
-                    "ride_height": random.randint(1, 50),
-                }
-                time.sleep(0.4)
-
-            # write sensor data to local file
-            write_to_csv(data)
-
-            payload = {
-                "id": DAQ_PI_ID,
-                "testName": testStateManager.test_name,
-                "data": data,
+            data = {
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "tire_temp_frame": (read_frame(mlx) if mlx_active else None),
+                "linpot": read_adc(adc) if adc_active else None,
+                "ride_height": (read_range(vl53) if vl53l0x_active else None),
             }
 
-            # Place the message into the MQTT queue
-            mqtt_queue.put((DATA_TOPIC, json.dumps(payload)))
+            print(data)
 
-            # log(f"Collected sensor data: {msg}")
-            time.sleep(0.0)  # Adjust as needed for data rate
+            print(
+                f"Ride height: {data['ride_height']} | Avg Temp: {compute_average_temp(data['tire_temp_frame'])}"
+            )
 
-        except Exception as e:
-            log(f"Error reading sensors: {e}")
+        else:
+            # Generate random data in dry-run mode
+            tire_temp_frame = []
+            for i in range(24 * 32):
+                tire_temp_frame.append(random.randint(20, 40))
+
+            data = {
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "tire_temp_frame": tire_temp_frame,
+                "linpot": random.randint(1, 100),
+                "ride_height": random.randint(1, 50),
+            }
+            time.sleep(0.4)
+
+        # write sensor data to local file
+        write_to_csv(data)
+
+        payload = {
+            "id": DAQ_PI_ID,
+            "testName": testStateManager.test_name,
+            "data": data,
+        }
+
+        # Place the message into the MQTT queue
+        mqtt_queue.put((DATA_TOPIC, json.dumps(payload)))
+
+        # log(f"Collected sensor data: {msg}")
+        time.sleep(0.0)  # Adjust as needed for data rate
+
+        # except Exception as e:
+        # log(f"Error reading sensors: {e}")
 
 
 def main():
@@ -306,7 +321,7 @@ def main():
         if vl53l0x_active:
             sensors["vl53"] = init_vl53l0x(i2c0)
         if mlx_active:
-            sensors["mlx"] = init_mlx90640(i2c1)
+            sensors["mlx"] = init_mlx90640()
 
     # Start the MQTT thread
     mqtt_thread_instance = threading.Thread(target=mqtt_thread, daemon=True)
@@ -322,10 +337,10 @@ def main():
             time.sleep(0.2)
     except KeyboardInterrupt:
         log("Shutting down...")
-        
+
         payload = {"id": DAQ_PI_ID, "status": "offline"}
         client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
-        
+
         client.disconnect()
 
 

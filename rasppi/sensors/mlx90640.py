@@ -10,9 +10,10 @@ NUM_COLUMNS = 32
 # Initialize list to store timestamps for frame rate calculations
 timestamps = []
 
+
 def init_mlx90640():
     try:
-        mlx = mlx_lib.Mlx9064x('I2C-1', i2c_addr=0x33, frame_rate=32.0)
+        mlx = mlx_lib.Mlx9064x("I2C-1", i2c_addr=0x33, frame_rate=32.0)
         mlx.init()
         print("MLX addr detected on I2C")
         return mlx
@@ -20,25 +21,28 @@ def init_mlx90640():
         print(f"Error initializing MLX90640: {e}")
         return None
 
+
 def read_frame(mlx):
     try:
         raw_frame = mlx.read_frame()
         frame = mlx.do_compensation(raw_frame)
+        frame = ["{:.2f}".format(val) for val in frame]
 
         # Display frame temperatures (optional)
-        '''
+        """
         for h in range(NUM_ROWS):
             for w in range(NUM_COLUMNS):
                 t = frame[h * NUM_COLUMNS + w]
                 print("%0.1f, " % t, end="")
             print()
         print()
-        '''
+        """
 
         return frame
     except Exception as e:
         print(f"Error reading frame: {e}")
         return None
+
 
 def calculate_frame_rate(timestamps):
     # Calculate differences between consecutive timestamps
@@ -57,6 +61,7 @@ def calculate_frame_rate(timestamps):
     else:
         return None, None, None
 
+
 def main():
     mlx = init_mlx90640()
 
@@ -69,6 +74,10 @@ def main():
             start_time = time.time()
 
             frame = read_frame(mlx)
+
+            print(frame)
+            print(type(frame[0]))
+
             if frame is None:
                 print("Error reading frame, skipping frame.")
                 continue
@@ -82,7 +91,9 @@ def main():
 
             # Calculate and display frame rate statistics every 10 frames
             if len(timestamps) > 10:
-                avg_frame_rate, max_frame_rate, min_frame_rate = calculate_frame_rate(timestamps)
+                avg_frame_rate, max_frame_rate, min_frame_rate = calculate_frame_rate(
+                    timestamps
+                )
 
                 if avg_frame_rate is not None:
                     print(f"Average Frame Rate: {avg_frame_rate:.2f} FPS")
@@ -94,6 +105,7 @@ def main():
 
     except KeyboardInterrupt:
         print("Program interrupted by user. Exiting...")
+
 
 if __name__ == "__main__":
     main()

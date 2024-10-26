@@ -1,5 +1,7 @@
 import adafruit_vl53l0x
 import time
+import busio
+import board
 
 
 def init_vl53l0x(i2c):
@@ -61,8 +63,11 @@ def read_range(sensor):
 
 
 def main():
+    i2c0 = busio.I2C(board.D1, board.D0)
+    sensor = init_vl53l0x(i2c0)
+
     while True:
-        print(f"calibratedValue = {read_range()}")
+        print(f"calibratedValue = {read_range(sensor)}")
         time.sleep(0.01)
 
 
