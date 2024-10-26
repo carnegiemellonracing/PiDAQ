@@ -13,4 +13,4 @@ HOSTNAME=$1
 cd "$(dirname "$0")/.."
 
 # Your rsync command
-rsync -avz --exclude-from='.gitignore' --exclude 'node_modules' --exclude 'rasppi/tests' --exclude '.git' --exclude 'videos' . cmr@$HOSTNAME:~/24e-DAQ-v2-Website
+sshpass -p '12345678' rsync -avz --exclude-from='.gitignore' --exclude 'node_modules' --exclude 'rasppi/tests' --exclude '.git' --exclude 'videos' . cmr@$HOSTNAME:~/24e-DAQ-v2-Website
