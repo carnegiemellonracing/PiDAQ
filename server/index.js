@@ -88,6 +88,8 @@ class ServerStateManager {
       // create a new array of data points
       if (!this.testData[this.runningTest]["data"][pi_id]) {
         this.testData[this.runningTest]["data"][pi_id] = [];
+      } else if (this.testData[this.runningTest]["data"][pi_id].length >= 100) {
+        this.testData[this.runningTest]["data"][pi_id].shift();
       }
 
       // push your data point

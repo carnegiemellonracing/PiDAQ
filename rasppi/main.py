@@ -9,6 +9,22 @@ import threading
 import queue
 import csv
 
+import sys
+import atexit
+
+# fuckass logging
+log_file = open("mqtt_log.txt", "w", buffering=1)
+sys.stdout = log_file
+sys.stderr = log_file
+
+
+def cleanup():
+    sys.stdout.close()
+    sys.stderr.close()
+
+
+atexit.register(cleanup)
+
 # toggle sensors
 DISCONNECT_TIMEOUT_SECONDS = 300
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
@@ -74,6 +90,7 @@ def write_to_csv(data):
 
 def log(msg):
     print(f"[{datetime.datetime.now()}] {msg}")
+    sys.stdout.flush()
 
 
 # Thread-safe queue for MQTT messages
@@ -137,9 +154,9 @@ else:
 # Initialize MQTT client: custom client ID, LWT
 BROKER_ADDRESS = args.ip_address
 BROKER_PORT = 1883
-client = mqtt.Client()
+client = mqtt.Client(client_id=DAQ_PI_ID, clean_session=False)
 lwt_payload = {"id": DAQ_PI_ID, "status": "offline"}
-client.will_set(STATUS_TOPIC, payload=json.dumps(lwt_payload), qos=1, retain=True)
+client.will_set(STATUS_TOPIC, payload=json.dumps(lwt_payload), qos=2, retain=True)
 
 
 class TestingState:
@@ -192,6 +209,14 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe(COMMAND_TOPIC, qos=1)
     payload = {"id": DAQ_PI_ID, "status": "online"}
     client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
+
+
+def on_disconnect(client, userdata, rc):
+    sys.stdout.flush()
+    log(f"Disconnected from MQTT broker! Result code: {rc}")
+    if rc != 0:
+        log("Trying to reconnect...")
+        client.reconnect()
 
 
 def on_message(client, userdata, msg):
@@ -271,11 +296,11 @@ def read_sensors():
                 "ride_height": (read_range(vl53) if vl53l0x_active else None),
             }
 
-            print(data)
+            # print(data)
 
-            print(
-                f"Ride height: {data['ride_height']} | Avg Temp: {compute_average_temp(data['tire_temp_frame'])}"
-            )
+            # print(
+            #     f"Ride height: {data['ride_height']} | Avg Temp: {compute_average_temp(data['tire_temp_frame'])}"
+            # )
 
         else:
             # Generate random data in dry-run mode
@@ -339,9 +364,11 @@ def main():
         log("Shutting down...")
 
         payload = {"id": DAQ_PI_ID, "status": "offline"}
-        client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
+        client.publish(STATUS_TOPIC, json.dumps(payload), qos=2)
 
         client.disconnect()
+    # finally:
+    #     cleanup()
 
 
 if __name__ == "__main__":
