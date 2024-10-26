@@ -76,7 +76,7 @@ class ServerStateManager {
     }
 
     // add a data point
-    addDataPoint(testName, data, pi_id) {
+    addDataPoint(data, pi_id) {
         if (this.testData[this.runningTest]) {
             // if sender PiID is not in list of senders, add it
             if (
@@ -91,6 +91,10 @@ class ServerStateManager {
             // create a new array of data points
             if (!this.testData[this.runningTest]["data"][pi_id]) {
                 this.testData[this.runningTest]["data"][pi_id] = [];
+            } else if (
+                this.testData[this.runningTest]["data"][pi_id].length > 50
+            ) {
+                this.testData[this.runningTest]["data"][pi_id].shift();
             }
 
             // push your data point
@@ -249,7 +253,7 @@ mqtt_client.on("message", (topic, message) => {
         dataPoint.average_temp = average_temp;
 
         // update server state
-        serverState.addDataPoint(testName, dataPoint, id);
+        serverState.addDataPoint(dataPoint, id);
 
         // broadcast to web clients
         io.to("client").emit("all_data", serverState.getAllData());
