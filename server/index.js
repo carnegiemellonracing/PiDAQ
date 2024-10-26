@@ -245,8 +245,6 @@ mqtt_client.on("message", (topic, message) => {
 
     dataPoint.average_temp = average_temp;
 
-    console.log(data);
-
     console.log(average_temp, data["ride_height"]);
 
     // update server state
