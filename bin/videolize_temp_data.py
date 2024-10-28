@@ -87,10 +87,20 @@ with open(frames_txt_path, "w") as timestamp_file:
 
             last_timestamp = timestamp
             frame_data = row[1]
-            frame = [
-                float(j)
-                for j in frame_data.replace("[", "").replace("]", "").split(",")
-            ]
+            if frame_data.strip() == "":
+                print("Empty line. Skipping")
+                continue
+            frame = None
+            try:
+                frame = [
+                    float(j)
+                    for j in frame_data.replace("[", "").replace("]", "").replace("'", "").split(",")
+                ]
+            except Exception as e:
+                print(f"Error parsing frame data on line {line_num}: {e}")
+                print(frame_data)
+                print(frame_data.replace("[", "").replace("]", "").replace("'", ""))
+                continue
             avg_value = np.mean(frame)
             frame = [avg_value if x < 0 else x for x in frame]
 
