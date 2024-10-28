@@ -23,7 +23,7 @@ export default function StoppedView({
 
         {room ? <h2>Room Code: {room}</h2> : <h2>Not in a Room</h2>}
 
-        {Object.keys(allData).length !== 0 &&
+        {/* {Object.keys(allData).length !== 0 &&
           Object.keys(allData)
             .toReversed()
             .map((testKey) => (
@@ -32,7 +32,7 @@ export default function StoppedView({
                 data={allData[testKey]}
                 testKey={testKey}
               />
-            ))}
+            ))} */}
       </div>
     </div>
   );

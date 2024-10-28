@@ -44,11 +44,11 @@ export default function RunningTestView({
               key={senderKey}
             >
               <h4>Sender: {senderKey}</h4>
-              <Graphs
+              {/* <Graphs
                 data={currentTestData.data[senderKey]}
                 filterRecent
                 showImage={viewTires}
-              />
+              /> */}
             </div>
           );
         })}
