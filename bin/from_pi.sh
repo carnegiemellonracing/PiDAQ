@@ -13,5 +13,5 @@ HOSTNAME=$1
 cd "$(dirname "$0")/.."
 
 # Rsync command
-rsync -avz \
+sshpass -p '12345678' rsync -avz \
   cmr@"$HOSTNAME":~/24e-DAQ-v2-Website/rasppi/tests rasppi

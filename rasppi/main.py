@@ -1,66 +1,136 @@
 import os
 import time
-import socketio
+import paho.mqtt.client as mqtt
 import random
 import argparse
-import board
-import busio
+import json
 import datetime
+import threading
+import queue
+import csv
+
+import sys
+import atexit
+
+def cleanup():
+    sys.stdout.close()
+    sys.stderr.close()
 
 
-# sensors
-from sensors.max11617 import init_max11617, read_adc
-from sensors.vl53l0x import init_vl53l0x, read_range
-from sensors.mlx90640 import init_mlx90640, read_frame
+atexit.register(cleanup)
 
-def log(msg):
-    print(f"[{time.time()}] {msg}")
-
-sio = socketio.Client()
-
-# get Pi ID from env var
-DAQ_PI_ID = os.getenv("DAQ_PI_ID")
+csv_file_lock = threading.Lock()
 
 # toggle sensors
 DISCONNECT_TIMEOUT_SECONDS = 300
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
+
+connected = False
 
 def make_csv_line(data):
     return f"{str(time.time())},\"{data['tire_temp_frame']}\",{data['linpot']},{data['ride_height']}\n"
 
 
 def get_file_name(test_name, timestamp):
-    return os.path.join(
-        "tests/", f"{timestamp.strftime('%Y_%m_%d/%H_%M')} {test_name}|{DAQ_PI_ID}.csv"
-    )
-
-def open_file_with_directories(file_path, mode='w'):
-    # Extract the directory from the file path
-    directory = os.path.dirname(file_path)
-
-    # Check if the directory exists, and if not, create it
-    if directory and not os.path.exists(directory):
+    """Generate a unique file name for each test."""
+    directory = f"tests/{timestamp.strftime('%Y_%m_%d')}"
+    if not os.path.exists(directory):
         os.makedirs(directory)
+    return f"{directory}/{timestamp.strftime('%H_%M')}_{test_name}_PI{DAQ_PI_ID}.csv"
 
-    # Now open the file
-    return open(file_path, mode)
 
-# set up and parse command line arguments
+def open_new_file():
+    with csv_file_lock:
+        """Open a new CSV file and create a CSV writer object."""
+        global data_file, csv_writer, last_test_name
+        if data_file:
+            data_file.close()  # Close the old file if it exists
+
+        file_name = get_file_name(
+            testStateManager.get_name(), testStateManager.get_timestamp()
+        )
+
+        data_file = open(file_name, mode="w", newline="")
+        csv_writer = csv.writer(data_file)
+        csv_writer.writerow(["timestamp", "tire_temp_frame", "linpot", "ride_height"])
+        last_test_name = testStateManager.test_name
+
+        log(f"Opened new file: {file_name}")
+
+
+def write_to_csv(data):
+    """Write sensor data to the CSV file."""
+    with csv_file_lock:
+        if csv_writer:
+            csv_writer.writerow(
+                [
+                    data["timestamp"],
+                    data["tire_temp_frame"],
+                    data["linpot"],
+                    data["ride_height"],
+                ]
+            )
+            data_file.flush()  # Ensure data is written to disk
+
+
+# def open_file_with_directories(file_path, mode="w"):
+#     # Extract the directory from the file path
+#     directory = os.path.dirname(file_path)
+
+#     # Check if the directory exists, and if not, create it
+#     if directory and not os.path.exists(directory):
+#         os.makedirs(directory)
+
+#     # Now open the file
+#     return open(file_path, mode)
+
+
+def log(msg):
+    print(f"[{datetime.datetime.now()}] {msg}")
+    sys.stdout.flush()
+
+
+# Thread-safe queue for MQTT messages
+mqtt_queue = queue.Queue()
+
+# Get Pi ID from environment or set randomly in test mode
+DAQ_PI_ID = os.getenv("DAQ_PI_ID") or f"RPI-{random.randint(1000, 9999)}"
+
+# MQTT topics
+COMMAND_TOPIC = "commands"
+DATA_TOPIC = "data"
+STATUS_TOPIC = "status"
+
+# Global sensor objects (initialized once in main())
+sensors = {}
+csv_writer = None  # CSV writer object
+data_file = None  # File object
+last_test_name = None
+
+
+# Command-line argument parsing
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
-
-parser.add_argument("ip_address", type=str, help="IP address of the WebSocket Server")
+parser.add_argument("ip_address", type=str, help="IP address of the MQTT Broker")
 parser.add_argument("-t", "--test_mode", action="store_true", help="Run in test mode")
 parser.add_argument("-a", "--adc", action="store_true", help="Enable ADC sensor")
 parser.add_argument("-m", "--mlx", action="store_true", help="Enable MLX90640 sensor")
 parser.add_argument("-v", "--vl", action="store_true", help="Enable VL53L0X sensor")
+parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
 
 args = parser.parse_args()
-wss_ip = args.ip_address
 is_test_mode = args.test_mode
 adc_active = args.adc
 mlx_active = args.mlx
 vl53l0x_active = args.vl
+debug_mode = args.debug
 
+if not debug_mode:
+# fuckass logging
+    log_file = open("mqtt_log.txt", "w", buffering=1)
+    sys.stdout = log_file
+    sys.stderr = log_file
+
+# Setting the client ID for this RPi
 
 if DAQ_PI_ID is None:
     if is_test_mode:
@@ -70,21 +140,36 @@ if DAQ_PI_ID is None:
         log("ERROR: DAQ_PI_ID not set in environment.")
         exit(1)
 
-log(f"WS server address: {wss_ip}")
+# Conditionally importing libraries
+
 if is_test_mode:
     log("Running in dry run test mode.")
 else:
     log("Running in normal mode.")
+    import board
+    import busio
+    from sensors.max11617 import init_max11617, read_adc
+    from sensors.vl53l0x import init_vl53l0x, read_range
+    from sensors.mlx90640 import init_mlx90640, read_frame
 
 
-# Raspberry Pi test collection state machine
+# Initialize MQTT client: custom client ID, LWT
+BROKER_ADDRESS = args.ip_address
+BROKER_PORT = 1883
+client = mqtt.Client(client_id=DAQ_PI_ID, clean_session=False)
+lwt_payload = {"id": DAQ_PI_ID, "status": "offline"}
+client.will_set(STATUS_TOPIC, payload=json.dumps(lwt_payload), qos=2, retain=True)
+
+
 class TestingState:
     def __init__(self):
         self.test_state = False
         self.test_time_stamp = None
         self.test_name = ""
         self.dry_run = bool(is_test_mode)
-        self.daq_pi_id = DAQ_PI_ID if DAQ_PI_ID is not None else random.randint(1, 100)
+        self.daq_pi_id = (
+            DAQ_PI_ID if DAQ_PI_ID is not None else random.randint(1000, 9999)
+        )
 
         if self.daq_pi_id is None:
             log(
@@ -111,147 +196,209 @@ class TestingState:
         self.test_time_stamp = timestamp
         self.test_state = True
 
+    def stop_test(self):
+        self.test_state = False
+        self.test_name = ""
+        self.test_timestamp = None
 
-# testing vars
+
 testStateManager = TestingState()
 
-@sio.event
-def connect():
-    sio.emit("join_rpi", {"env": f"rpi{DAQ_PI_ID}"})
-    log("connection established")
 
-@sio.event
-def connect_error(data):
-    log("The connection failed")
-
-
-@sio.event
-def disconnect():
-    log("Disconnected from server")
+# MQTT event listeners
+def on_connect(client, userdata, flags, rc):
+    connected = True
+    log(f"Connected to MQTT broker with result code {rc}")
+    client.subscribe(COMMAND_TOPIC, qos=1)
+    payload = {"id": DAQ_PI_ID, "status": "online"}
+    client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
 
 
-@sio.on("start_test")
-def start_test(test_name):
-    log(f'starting test "{test_name}"')
-    timestamp = datetime.datetime.now(datetime.timezone.utc)
-    testStateManager.start_test(test_name=test_name, timestamp=timestamp)
+def on_disconnect(client, userdata, rc):
+    connected = False
+    sys.stdout.flush()
+    log(f"Disconnected from MQTT broker! Result code: {rc}")
 
-@sio.on("stop_test_rpi")
-def stop_test(test_name):
-    log(f'stopped test "{test_name}"')
-    testStateManager.set_state(False)
-    testStateManager.set_name("")
+    while not connected:
+        time.sleep(1)
+        client.reconnect()
 
-def try_connect():
-    time_before = time.time()
-    if sio.connected:
-        return
-    try:
-        sio.connect(wss_ip)
-        log(f"Succesfully connected to {wss_ip}. Took {time.time()-time_before} seconds.")
-    except socketio.exceptions.ConnectionError:
-        log(f"Failed to connect to {wss_ip}. Took {time.time()-time_before} seconds. Retrying...")
-        return
-    except ValueError:
-        log("Client is already connected")
-        return
+def on_message(client, userdata, msg):
+    log(f"Received message from topic '{msg.topic}': {msg.payload.decode()}")
+
+    if msg.topic == COMMAND_TOPIC:
+        data = json.loads(msg.payload.decode())
+
+        # get initial status of PIs
+        if data["command"] == "get_status":
+            payload = {"id": DAQ_PI_ID, "status": "online"}
+            client.publish(STATUS_TOPIC, json.dumps(payload), qos=1)
+            return
+
+        test_name = data["test_name"]
+        if data["command"] == "start":
+            testStateManager.start_test(test_name, datetime.datetime.now())
+            open_new_file()
+            log(f'Started test: "{test_name}"')
+        elif data["command"] == "stop":
+            testStateManager.stop_test()
+            log(f'Stopped test: "{test_name}"')
+
+
+client.on_connect = on_connect
+client.on_message = on_message
+
+
+# Thread to handle MQTT communication and publish messages from the queue.
+def mqtt_thread():
+    log("Starting MQTT thread...")
+    client.connect(BROKER_ADDRESS, BROKER_PORT, keepalive=5)
+    client.loop_start()  # Start MQTT loop in the background
+
+    while True:
+        try:
+            # Get the next message from the queue
+            msg = mqtt_queue.get()  # This will block until a message is available
+            topic, payload = msg
+            client.publish(topic, payload, qos=0)
+            # log(f"Published to {topic}: {payload}")
+            mqtt_queue.task_done()  # Mark the task as done
+        except Exception as e:
+            log(f"Error in MQTT thread: {e}")
+
+
+def compute_average_temp(data_frame):
+    """Compute the average temperature from the MLX90640 data frame."""
+    data_frame = [float(temp) for temp in data_frame]
+    if len(data_frame) != 768:
+        raise ValueError("Data frame must contain exactly 768 temperature values.")
+
+    return sum(data_frame) / len(data_frame)
+
+
+# Thread to collect sensor data and place it in the MQTT queue.
+def read_sensors():
+    while True:
+        if not testStateManager.test_state:
+            time.sleep(1)  # Avoid busy waiting
+            continue
+
+        if not testStateManager.get_state():
+            continue
+
+        if not is_test_mode:
+            # Collect real sensor data using pre-initialized sensors
+            mlx = sensors.get("mlx")
+            adc = sensors.get("adc")
+            vl53 = sensors.get("vl53")
+
+            data = {
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                # "tire_temp_frame": (read_frame(mlx) if mlx_active else None),
+                # "linpot": read_adc(adc) if adc_active else None,
+                # "ride_height": (read_range(vl53) if vl53l0x_active else None),
+            }
+
+            # TODO: Add timing to understand how long it takes to read sensors
+
+            if mlx_active:
+                try :
+                    data["tire_temp_frame"] = read_frame(mlx)
+                except Exception as e:
+                    log(f"Error reading MLX90640 frame: {e}")
+                    data["tire_temp_frame"] = None
+            else:
+                data["tire_temp_frame"] = None
+            if adc_active:
+                try:
+                    data["linpot"] = read_adc(adc)
+                except Exception as e:
+                    log(f"Error reading ADC: {e}")
+                    data["linpot"] = None
+            else:
+                data["linpot"] = None
+            if vl53l0x_active:
+                try:
+                    data["ride_height"] = read_range(vl53)
+                except Exception as e:
+                    log(f"Error reading VL53L0X: {e}")
+                    data["ride_height"] = None
+            else:
+                data["ride_height"] = None
+            # print(data)
+
+            # print(
+            #     f"Ride height: {data['ride_height']} | Avg Temp: {compute_average_temp(data['tire_temp_frame'])}"
+            # )
+
+        else:
+            # Generate random data in dry-run mode
+            tire_temp_frame = []
+            for i in range(24 * 32):
+                tire_temp_frame.append(random.randint(20, 40))
+
+            data = {
+                "timestamp": datetime.datetime.utcnow().isoformat(),
+                "tire_temp_frame": tire_temp_frame,
+                "linpot": random.randint(1, 100),
+                "ride_height": random.randint(1, 50),
+            }
+            time.sleep(0.4)
+
+        # write sensor data to local file
+        write_to_csv(data)
+
+        payload = {
+            "id": DAQ_PI_ID,
+            "testName": testStateManager.test_name,
+            "data": data,
+        }
+
+        # Place the message into the MQTT queue
+        mqtt_queue.put((DATA_TOPIC, json.dumps(payload)))
+
+        # log(f"Collected sensor data: {msg}")
+        if not mlx_active:
+            time.sleep(0.1)  # Adjust as needed for data rate
+
+        # except Exception as e:
+        # log(f"Error reading sensors: {e}")
+
 
 def main():
-    # connect to ws server
-    try_connect()
+    if not is_test_mode:
+        # Initialize I2C buses and sensors once
+        i2c1 = busio.I2C(board.SCL, board.SDA)
+        i2c0 = busio.I2C(board.D1, board.D0)
 
-    # init sensors
-    i2c1 = busio.I2C(board.SCL, board.SDA)
-    i2c0 = busio.I2C(board.D1, board.D0)
+        if adc_active:
+            sensors["adc"] = init_max11617(i2c0)
+        if vl53l0x_active:
+            sensors["vl53"] = init_vl53l0x(i2c0)
+        if mlx_active:
+            sensors["mlx"] = init_mlx90640()
 
-    if adc_active:
-        adc = init_max11617(i2c0)
+    # Start the MQTT thread
+    mqtt_thread_instance = threading.Thread(target=mqtt_thread, daemon=True)
+    mqtt_thread_instance.start()
 
-    if vl53l0x_active:
-        tof = init_vl53l0x(i2c0)
+    # Start the sensor reading thread
+    sensor_thread_instance = threading.Thread(target=read_sensors, daemon=True)
+    sensor_thread_instance.start()
 
-    if mlx_active:
-        tt = init_mlx90640()
+    # Keep the main thread alive to allow other threads to run
+    try:
+        while True:
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        log("Shutting down due to KeyboardInterrupt...")
 
+        payload = {"id": DAQ_PI_ID, "status": "offline"}
+        client.publish(STATUS_TOPIC, json.dumps(payload), qos=2)
 
-    last_test_name = None
-    last_connected_timestamp = None
-
-    last_loop_timestamp = time.time()
-
-    loop_iterations = 0
-    while True:
-        loop_iterations += 1
-
-        if (time.time() - last_loop_timestamp) > 0.2:
-            log(f"Long loop iteration: {time.time() - last_loop_timestamp:.2f} seconds.")
-
-        last_loop_timestamp = time.time()
-
-        if (not sio.connected) and (loop_iterations % 10 == 0):
-            log("Retrying connection")
-            try_connect()
-            # If last connected timestamp is more than five minutes in the past
-            if last_connected_timestamp is not None:
-                if (datetime.datetime.now() - last_connected_timestamp).seconds > DISCONNECT_TIMEOUT_SECONDS:
-                    log("Connection lost timeout.")
-                    exit(1)
-
-        if testStateManager.get_state():
-            with open_file_with_directories(
-                get_file_name(
-                    testStateManager.get_name(), testStateManager.get_timestamp()
-                ),
-                "a",
-            ) as file:
-                if last_test_name != testStateManager.get_name():
-                    last_test_name = testStateManager.get_name()
-                    file.write(CSV_HEADER)
-                # collect sensor data
-                if adc_active:
-                    linpot_value = read_adc(adc)
-                if vl53l0x_active:
-                    ride_height_value = read_range(tof)
-                if mlx_active:
-                    tire_temp_frame = read_frame(tt)
-
-                # testing mode
-                if is_test_mode:
-                    dv = random.randint(1, 100)
-                    idv = int(time.time())
-                    if sio.connected:
-                        sio.emit(
-                            "test_data",
-                            {
-                                "testName": testStateManager.get_name(),
-                                "data": [idv, dv],
-                            },
-                        )
-                    else:
-                        log("Client is not connected, cannot emit event.")
-
-                else:
-                    formatted_data = {
-                        "tire_temp_frame": (
-                            tire_temp_frame if mlx_active else False
-                        ),
-                        "linpot": linpot_value if adc_active else False,
-                        "ride_height": (ride_height_value if vl53l0x_active else False),
-                        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    }
-                    if sio.connected:
-                        sio.emit(
-                            "test_data",
-                            {
-                                "testName": testStateManager.get_name(),
-                                "data": formatted_data,
-                            },
-                        )
-                        last_connected_timestamp = datetime.datetime.now()
-                    else:
-                        log("Client is not connected, cannot emit event.")
-
-                    file.write(make_csv_line(formatted_data))
+        client.disconnect()
+    # finally:
+    #     cleanup()
 
 
 if __name__ == "__main__":
