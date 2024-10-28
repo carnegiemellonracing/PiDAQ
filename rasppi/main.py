@@ -12,12 +12,6 @@ import csv
 import sys
 import atexit
 
-# fuckass logging
-log_file = open("mqtt_log.txt", "w", buffering=1)
-sys.stdout = log_file
-sys.stderr = log_file
-
-
 def cleanup():
     sys.stdout.close()
     sys.stderr.close()
@@ -25,10 +19,13 @@ def cleanup():
 
 atexit.register(cleanup)
 
+csv_file_lock = threading.Lock()
+
 # toggle sensors
 DISCONNECT_TIMEOUT_SECONDS = 300
 CSV_HEADER = "timestamp,tire_temp_frame,linpot,ride_height\n"
 
+connected = False
 
 def make_csv_line(data):
     return f"{str(time.time())},\"{data['tire_temp_frame']}\",{data['linpot']},{data['ride_height']}\n"
@@ -43,9 +40,9 @@ def get_file_name(test_name, timestamp):
 
 
 def open_new_file():
-    """Open a new CSV file and create a CSV writer object."""
-    global data_file, csv_writer, last_test_name
-    with lock:
+    with csv_file_lock:
+        """Open a new CSV file and create a CSV writer object."""
+        global data_file, csv_writer, last_test_name
         if data_file:
             data_file.close()  # Close the old file if it exists
 
@@ -63,7 +60,7 @@ def open_new_file():
 
 def write_to_csv(data):
     """Write sensor data to the CSV file."""
-    with lock:
+    with csv_file_lock:
         if csv_writer:
             csv_writer.writerow(
                 [
@@ -96,9 +93,6 @@ def log(msg):
 # Thread-safe queue for MQTT messages
 mqtt_queue = queue.Queue()
 
-# Lock to control shared state access
-lock = threading.Lock()
-
 # Get Pi ID from environment or set randomly in test mode
 DAQ_PI_ID = os.getenv("DAQ_PI_ID") or f"RPI-{random.randint(1000, 9999)}"
 
@@ -121,12 +115,20 @@ parser.add_argument("-t", "--test_mode", action="store_true", help="Run in test 
 parser.add_argument("-a", "--adc", action="store_true", help="Enable ADC sensor")
 parser.add_argument("-m", "--mlx", action="store_true", help="Enable MLX90640 sensor")
 parser.add_argument("-v", "--vl", action="store_true", help="Enable VL53L0X sensor")
+parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
 
 args = parser.parse_args()
 is_test_mode = args.test_mode
 adc_active = args.adc
 mlx_active = args.mlx
 vl53l0x_active = args.vl
+debug_mode = args.debug
+
+if not debug_mode:
+# fuckass logging
+    log_file = open("mqtt_log.txt", "w", buffering=1)
+    sys.stdout = log_file
+    sys.stderr = log_file
 
 # Setting the client ID for this RPi
 
@@ -205,6 +207,7 @@ testStateManager = TestingState()
 
 # MQTT event listeners
 def on_connect(client, userdata, flags, rc):
+    connected = True
     log(f"Connected to MQTT broker with result code {rc}")
     client.subscribe(COMMAND_TOPIC, qos=1)
     payload = {"id": DAQ_PI_ID, "status": "online"}
@@ -212,12 +215,13 @@ def on_connect(client, userdata, flags, rc):
 
 
 def on_disconnect(client, userdata, rc):
+    connected = False
     sys.stdout.flush()
     log(f"Disconnected from MQTT broker! Result code: {rc}")
-    if rc != 0:
-        log("Trying to reconnect...")
-        client.reconnect()
 
+    while not connected:
+        time.sleep(1)
+        client.reconnect()
 
 def on_message(client, userdata, msg):
     log(f"Received message from topic '{msg.topic}': {msg.payload.decode()}")
@@ -247,6 +251,7 @@ client.on_message = on_message
 
 # Thread to handle MQTT communication and publish messages from the queue.
 def mqtt_thread():
+    log("Starting MQTT thread...")
     client.connect(BROKER_ADDRESS, BROKER_PORT, keepalive=5)
     client.loop_start()  # Start MQTT loop in the background
 
@@ -274,12 +279,10 @@ def compute_average_temp(data_frame):
 # Thread to collect sensor data and place it in the MQTT queue.
 def read_sensors():
     while True:
-        with lock:
-            if not testStateManager.test_state:
-                time.sleep(1)  # Avoid busy waiting
-                continue
+        if not testStateManager.test_state:
+            time.sleep(1)  # Avoid busy waiting
+            continue
 
-            # try:
         if not testStateManager.get_state():
             continue
 
@@ -291,11 +294,37 @@ def read_sensors():
 
             data = {
                 "timestamp": datetime.datetime.utcnow().isoformat(),
-                "tire_temp_frame": (read_frame(mlx) if mlx_active else None),
-                "linpot": read_adc(adc) if adc_active else None,
-                "ride_height": (read_range(vl53) if vl53l0x_active else None),
+                # "tire_temp_frame": (read_frame(mlx) if mlx_active else None),
+                # "linpot": read_adc(adc) if adc_active else None,
+                # "ride_height": (read_range(vl53) if vl53l0x_active else None),
             }
 
+            # TODO: Add timing to understand how long it takes to read sensors
+
+            if mlx_active:
+                try :
+                    data["tire_temp_frame"] = read_frame(mlx)
+                except Exception as e:
+                    log(f"Error reading MLX90640 frame: {e}")
+                    data["tire_temp_frame"] = None
+            else:
+                data["tire_temp_frame"] = None
+            if adc_active:
+                try:
+                    data["linpot"] = read_adc(adc)
+                except Exception as e:
+                    log(f"Error reading ADC: {e}")
+                    data["linpot"] = None
+            else:
+                data["linpot"] = None
+            if vl53l0x_active:
+                try:
+                    data["ride_height"] = read_range(vl53)
+                except Exception as e:
+                    log(f"Error reading VL53L0X: {e}")
+                    data["ride_height"] = None
+            else:
+                data["ride_height"] = None
             # print(data)
 
             # print(
@@ -329,7 +358,8 @@ def read_sensors():
         mqtt_queue.put((DATA_TOPIC, json.dumps(payload)))
 
         # log(f"Collected sensor data: {msg}")
-        time.sleep(0.0)  # Adjust as needed for data rate
+        if not mlx_active:
+            time.sleep(0.1)  # Adjust as needed for data rate
 
         # except Exception as e:
         # log(f"Error reading sensors: {e}")
@@ -361,7 +391,7 @@ def main():
         while True:
             time.sleep(0.2)
     except KeyboardInterrupt:
-        log("Shutting down...")
+        log("Shutting down due to KeyboardInterrupt...")
 
         payload = {"id": DAQ_PI_ID, "status": "offline"}
         client.publish(STATUS_TOPIC, json.dumps(payload), qos=2)
