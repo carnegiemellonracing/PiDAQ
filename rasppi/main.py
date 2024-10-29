@@ -11,6 +11,7 @@ import datetime
 import data_logger
 import csv_logger
 import threading
+import base64
 
 from logger import log, log_to_file
 import mqtt
@@ -134,10 +135,12 @@ def compute_average_temp(data_frame):
     if len(data_frame) != 768:
         raise ValueError("Data frame must contain exactly 768 temperature values.")
 
-    return sum(data_frame) / len(data_frame)
+    return int((sum(data_frame) / len(data_frame)))
 
 # Thread to collect sensor data and place it in the MQTT queue.
 def read_sensors():
+
+    last_full_frame = None
     while True:
         if not testStateManager.test_state:
             time.sleep(1)  # Avoid busy waiting
@@ -154,7 +157,12 @@ def read_sensors():
                 try :
                     mlx = sensors.get("mlx")
                     mlx_data_frame= read_frame(mlx)
-                    data_logger.log_data(name="tire_temp_frame", value=mlx_data_frame, mqtt=False)
+
+                    send_mqtt =not last_full_frame or  (time.time() - last_full_frame) > 1
+                    data_logger.log_data(name="tire_temp_frame", value=mlx_data_frame, mqtt=send_mqtt)
+                    if send_mqtt:
+                        last_full_frame = time.time()
+
                     average_temp = compute_average_temp(mlx_data_frame)
                     data_logger.log_data(name="tire_temp_avg", value=average_temp)
                 except Exception as e:

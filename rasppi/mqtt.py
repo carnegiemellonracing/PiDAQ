@@ -32,13 +32,14 @@ def run_connection(ip_address, handle_message):
     log("Starting MQTT thread...")
     client.connect(ip_address, BROKER_PORT, keepalive=5)
     client.on_connect = on_connect
-    client.on_disconnect = on_disconnect
+    # client.on_disconnect = on_disconnect
     client.on_message = on_message
     client.loop_start()  # Start MQTT loop in the background
+    client.reconnect_delay_set(min_delay= 1, max_delay= 2)
 
     while True:
         try:
-            log("Waiting for message to send...")
+            # log("Waiting for message to send...")
             # Get the next message from the queue
             msg = mqtt_queue.get()  # This will block until a message is available
             topic, payload = msg
@@ -49,7 +50,7 @@ def run_connection(ip_address, handle_message):
             log(f"Error in MQTT thread: {e}")
 
 def send_data(message):
-    mqtt_queue.put((DATA_TOPIC, json.dumps(message)))
+    mqtt_queue.put((DATA_TOPIC, message))
 
 def disconnect():
     client.publish(STATUS_TOPIC, json.dumps(lwt_payload), qos=2)

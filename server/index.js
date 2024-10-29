@@ -271,9 +271,19 @@ mqtt_client.on("message", (topic, message) => {
 
   // Sensor data
   if (topic === DATA_TOPIC) {
-    const data = JSON.parse(message.toString());
-    console.log("Received data ", data);
-    const { id, testName, name, value, timestamp } = data;
+    console.log("received raw", message.toString());
+    const data = message.toString().split("|");
+    const [id, testName, timestamp, name, packedValue] = data;
+
+    let value = JSON.parse(packedValue);
+
+    if (typeof value === "string" && !isNaN(parseFloat(value))) {
+      value = parseFloat(value);
+    } else if (typeof value === "string" && !isNaN(parseInt(value))) {
+      value = parseInt(value);
+    }
+
+    console.log("Received data ", [id, testName, timestamp, name, value]);
 
     // update server state
     serverState.addDataPoint({ testName, name, value, pi_id: id, timestamp });

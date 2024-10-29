@@ -12,6 +12,17 @@ csv_file_lock = threading.Lock()
 CSV_HEADER = "timestamp,name,value\n"
 DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 
+def open_file_with_directories(file_path, mode="w", newline="\n"):
+    # Extract the directory from the file path
+    directory = os.path.dirname(file_path)
+
+    # Check if the directory exists, and if not, create it
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
+
+    # Now open the file
+    return open(file_path, mode=mode, newline=newline)
+
 def get_file_name(test_name, timestamp):
     """Generate a unique file name for each test."""
     directory = f"tests/{timestamp.strftime('%Y_%m_%d')}"
@@ -30,7 +41,7 @@ def open_new_file(test_name, timestamp):
             test_name=test_name, timestamp=timestamp
         )
 
-        data_file = open(file_name, mode="w", newline="")
+        data_file = open_file_with_directories(file_name, mode="w", newline="")
         csv_writer = csv.writer(data_file)
         csv_writer.writerow(["timestamp", "tire_temp_frame", "linpot", "ride_height"])
         last_test_name = test_name

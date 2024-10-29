@@ -26,7 +26,7 @@ def read_frame(mlx):
     try:
         raw_frame = mlx.read_frame()
         frame = mlx.do_compensation(raw_frame)
-        frame = ["{:.2f}".format(val) for val in frame]
+        frame =[int(val*100) for val in frame]
 
         # Display frame temperatures (optional)
         """

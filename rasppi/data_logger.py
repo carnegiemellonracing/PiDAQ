@@ -18,13 +18,8 @@ def log_data(name, value, timestamp=None, mqtt=True, csv=True):
     value = json.dumps(value)
 
     if mqtt:
-        mqtt_client.send_data({
-            "id": DAQ_PI_ID,
-            "name": name,
-            "value": value,
-            "timestamp": timestamp,
-            "testName": current_test_name
-        })
+        mqtt_client.send_data(
+            f"{DAQ_PI_ID}|{current_test_name}|{timestamp}|{name}|{json.dumps(value)}")
     if csv:
         csv_logger.log_data(timestamp=timestamp, name=name, value=value)
 
