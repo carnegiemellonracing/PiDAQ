@@ -21,17 +21,6 @@ DISCONNECT_TIMEOUT_SECONDS = 300
 
 connected = False
 
-# def open_file_with_directories(file_path, mode="w"):
-#     # Extract the directory from the file path
-#     directory = os.path.dirname(file_path)
-
-#     # Check if the directory exists, and if not, create it
-#     if directory and not os.path.exists(directory):
-#         os.makedirs(directory)
-
-#     # Now open the file
-#     return open(file_path, mode)
-
 # Get Pi ID from environment or set randomly in test mode
 # Global sensor objects (initialized once in main())
 sensors = {}
