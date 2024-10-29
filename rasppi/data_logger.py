@@ -8,9 +8,12 @@ DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 
 current_test_name = None
 
-def log_data(name, value, timestamp=time.time(), mqtt=True, csv=True):
+def log_data(name, value, timestamp=None, mqtt=True, csv=True):
     global current_test_name
     """Log data to MQTT and CSV files."""
+
+    if timestamp is None:
+        timestamp = time.time()
 
     value = json.dumps(value)
 
