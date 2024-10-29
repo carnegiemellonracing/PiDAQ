@@ -178,8 +178,8 @@ def read_sensors():
                 try :
                     tire_temp_frame = []
                     for i in range(24 * 32):
-                        tire_temp_frame.append(random.randint(20, 40))
-                    data_logger.log_data(name="tire_temp_frame", value=tire_temp_frame, mqtt=False)
+                        tire_temp_frame.append(random.randint(1000, 9999))
+                    data_logger.log_data(name="tire_temp_frame", value=tire_temp_frame, mqtt=True)
                     average_temp = compute_average_temp(tire_temp_frame)
                     data_logger.log_data(name="tire_temp_avg", value=average_temp)
                 except Exception as e:

@@ -18,7 +18,7 @@ def open_file_with_directories(file_path, mode="w", newline="\n"):
 
     # Check if the directory exists, and if not, create it
     if directory and not os.path.exists(directory):
-        os.makedirs(directory)
+        os.makedirs(directory, exist_ok=True)
 
     # Now open the file
     return open(file_path, mode=mode, newline=newline)
