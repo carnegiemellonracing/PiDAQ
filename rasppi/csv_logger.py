@@ -28,7 +28,7 @@ def get_file_name(test_name, timestamp):
     directory = f"tests/{timestamp.strftime('%Y_%m_%d')}"
     if not os.path.exists(directory):
         os.makedirs(directory)
-    return f"{directory}/{timestamp.strftime('%H_%M')}_{test_name}_PI{DAQ_PI_ID}.csv"
+    return f"{directory}/{test_name}/{timestamp.strftime('%H_%M')}_{test_name}_PI{DAQ_PI_ID}.csv"
 
 def open_new_file(test_name, timestamp):
     with csv_file_lock:
