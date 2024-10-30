@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Graphs from "../components/Graphs";
 import StopTestBtn from "../components/StopTestBtn";
+import { ErrorBoundary } from "react-error-boundary";
 
 export default function RunningTestView({
   currentTest,
@@ -36,22 +37,30 @@ export default function RunningTestView({
       <h4>Senders: {currentTestData.info.senders.join(", ")}</h4>
 
       <div className="running-senders-container">
-        {currentTestData.info.senders.map((senderKey) => {
-          const piConnected = Object.values(allRPI).includes(senderKey);
-          return (
-            <div
-              className={`sender-box ${!piConnected ? "sender-disconnected" : ""}`}
-              key={senderKey}
-            >
-              <h4>Sender: {senderKey}</h4>
-              <Graphs
-                data={currentTestData.data[senderKey]}
-                filterRecent
-                showImage={viewTires}
-              />
+        <ErrorBoundary
+          fallback={
+            <div style={{ color: "red", fontWeight: "bolder", margin: "2rem" }}>
+              Error loading graphs
             </div>
-          );
-        })}
+          }
+        >
+          {currentTestData.info.senders.map((senderKey) => {
+            const piConnected = Object.values(allRPI).includes(senderKey);
+            return (
+              <div
+                className={`sender-box ${!piConnected ? "sender-disconnected" : ""}`}
+                key={senderKey}
+              >
+                <h4>Sender: {senderKey}</h4>
+                <Graphs
+                  data={currentTestData.data[senderKey]}
+                  filterRecent
+                  showImage={viewTires}
+                />
+              </div>
+            );
+          })}
+        </ErrorBoundary>
       </div>
     </div>
   );

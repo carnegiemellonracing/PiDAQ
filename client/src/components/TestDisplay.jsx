@@ -2,6 +2,7 @@ import DataTable from "./DataTable";
 import DataGraph from "./DataGraph";
 import { useState } from "react";
 import Graphs from "./Graphs";
+import { ErrorBoundary } from "react-error-boundary";
 
 export default function TestDisplay({ data, testKey }) {
   return (
@@ -15,7 +16,23 @@ export default function TestDisplay({ data, testKey }) {
           <div className="sender-box" key={senderKey}>
             <h4>Sender: {senderKey}</h4>
 
-            {<Graphs data={data.data[senderKey]} testName={testKey} />}
+            {
+              <ErrorBoundary
+                fallback={
+                  <div
+                    style={{
+                      color: "red",
+                      fontWeight: "bolder",
+                      margin: "2rem",
+                    }}
+                  >
+                    Error loading graph
+                  </div>
+                }
+              >
+                <Graphs data={data.data[senderKey]} testName={testKey} />
+              </ErrorBoundary>
+            }
           </div>
         ))}
       </div>
