@@ -11,10 +11,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@msgpack/msgpack": "^3.0.0-beta2",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "mqtt": "^5.10.1",
     "nodemon": "^3.1.6",
+    "pako": "^2.1.0",
     "socket.io": "^4.7.5"
   }
 }
