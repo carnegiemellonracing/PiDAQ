@@ -4,7 +4,7 @@ import { useThrottledCallback } from "use-debounce";
 export default function TireTempFrameDisplay({ lastEntry }) {
   const canvasRef = useRef(null);
 
-  const [lastImage, setLastImage] = useState(lastEntry?.["tire_temp_frame"]);
+  const [lastImage, setLastImage] = useState(lastEntry);
 
   const onRefresh = useRef(null);
 
@@ -14,7 +14,7 @@ export default function TireTempFrameDisplay({ lastEntry }) {
 
   useEffect(() => {
     onRefresh.current = () => {
-      setLastImage(lastEntry["tire_temp_frame"]);
+      setLastImage(lastEntry);
     };
   }, [lastEntry]);
 
@@ -23,7 +23,8 @@ export default function TireTempFrameDisplay({ lastEntry }) {
   }, [lastEntry, throttledOnRefresh]);
 
   // Function to convert temperature to color (for example: blue for cold, red for hot)
-  const tempToColor = (temp) => {
+  const tempToColor = (bigTemp) => {
+    const temp = bigTemp / 100;
     // Define a range of temperatures for color mapping
     const minTemp = 20; // Example minimum temperature
     const maxTemp = 50; // Example maximum temperature
@@ -43,6 +44,7 @@ export default function TireTempFrameDisplay({ lastEntry }) {
   };
 
   useEffect(() => {
+    console.log("Painting canvas");
     if (!lastImage) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -70,6 +72,7 @@ export default function TireTempFrameDisplay({ lastEntry }) {
         ctx.fillRect(x, y, 1, 1); // Draw a single pixel
       }
     }
+    console.log("painted canvas");
   }, [lastImage]);
 
   return (

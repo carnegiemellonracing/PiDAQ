@@ -11,7 +11,7 @@ export default function RunningTestView({
   emit,
   onRequestStopTest,
 }) {
-  const [viewTires, setViewTires] = useState(false);
+  const [viewTires, setViewTires] = useState(true);
 
   return (
     <div className="test-container">
@@ -44,11 +44,11 @@ export default function RunningTestView({
               key={senderKey}
             >
               <h4>Sender: {senderKey}</h4>
-              {/* <Graphs
+              <Graphs
                 data={currentTestData.data[senderKey]}
                 filterRecent
                 showImage={viewTires}
-              /> */}
+              />
             </div>
           );
         })}
