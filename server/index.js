@@ -11,12 +11,12 @@ const app = express();
 app.use(cors());
 const server = createServer(app);
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-    },
-    pingInterval: 1000,
-    pingTimeout: 3000,
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+  pingInterval: 1000,
+  pingTimeout: 3000,
 });
 const WSS_PORT = 3001;
 
@@ -30,102 +30,102 @@ const STATUS_TOPIC = "status";
 
 // Test data state manager
 class ServerStateManager {
-    constructor() {
-        this.connectedPis = new Set();
-        this.testData = {};
-        this.runningTest = "";
+  constructor() {
+    this.connectedPis = new Set();
+    this.testData = {};
+    this.runningTest = "";
+  }
+
+  // returns list of all connected Pis
+  getPis() {
+    return this.connectedPis;
+  }
+
+  getPisAsArray() {
+    return Array.from(this.getPis());
+  }
+
+  // adds a pi to the list of connected Pis
+  addPi(id) {
+    this.connectedPis.add(id);
+  }
+
+  // removes a pi to the list of connected Pis
+  removePi(id) {
+    this.connectedPis.delete(id);
+  }
+
+  removeAllPis() {
+    this.connectedPis.clear();
+  }
+
+  // start a new test
+  startTest(testName) {
+    // create entry in testDate
+    const timeStamp = Date.now();
+
+    // update running test
+    this.runningTest = `${testName}---${timeStamp}`;
+
+    this.testData[this.runningTest] = {
+      info: {
+        time: timeStamp,
+        name: this.runningTest,
+        senders: [],
+      },
+      data: {},
+    };
+  }
+
+  // returns all test data
+  getAllData() {
+    return serverState.testData;
+  }
+
+  // add a data point
+  addDataPoint({
+    testName: testName,
+    dataLabel: dataLabel,
+    dataValue: dataValue,
+    pi_id: pi_id,
+    timestamp: timestamp,
+  }) {
+    const testData = this.testData[testName];
+    if (testData) {
+      // if sender PiID is not in list of senders, add it
+      if (!testData["info"]["senders"].includes(pi_id)) {
+        testData["info"]["senders"].push(pi_id);
+      }
+
+      // if the data property doesn't contain the sender ID,
+      // create a new array of data points
+      if (!testData["data"][pi_id]) {
+        testData["data"][pi_id] = {};
+      }
+
+      if (!testData["data"][pi_id][dataLabel]) {
+        testData["data"][pi_id][dataLabel] = [];
+      } else if (testData["data"][pi_id][dataLabel].length >= 100) {
+        testData["data"][pi_id][dataLabel].shift();
+      }
+
+      // push your data point
+      testData["data"][pi_id][dataLabel].push([timestamp, dataValue]);
+      // console.log(data);
     }
+  }
 
-    // returns list of all connected Pis
-    getPis() {
-        return this.connectedPis;
-    }
+  getTestName() {
+    return this.runningTest;
+  }
 
-    getPisAsArray() {
-        return Array.from(this.getPis());
-    }
+  stopTest(testName) {
+    this.runningTest = "";
+  }
 
-    // adds a pi to the list of connected Pis
-    addPi(id) {
-        this.connectedPis.add(id);
-    }
-
-    // removes a pi to the list of connected Pis
-    removePi(id) {
-        this.connectedPis.delete(id);
-    }
-
-    removeAllPis() {
-        this.connectedPis.clear();
-    }
-
-    // start a new test
-    startTest(testName) {
-        // create entry in testDate
-        const timeStamp = Date.now();
-
-        // update running test
-        this.runningTest = `${testName}---${timeStamp}`;
-
-        this.testData[this.runningTest] = {
-            info: {
-                time: timeStamp,
-                name: this.runningTest,
-                senders: [],
-            },
-            data: {},
-        };
-    }
-
-    // returns all test data
-    getAllData() {
-        return serverState.testData;
-    }
-
-    // add a data point
-    addDataPoint({
-        testName: testName,
-        dataLabel: dataLabel,
-        dataValue: dataValue,
-        pi_id: pi_id,
-        timestamp: timestamp,
-    }) {
-        const testData = this.testData[testName];
-        if (testData) {
-            // if sender PiID is not in list of senders, add it
-            if (!testData["info"]["senders"].includes(pi_id)) {
-                testData["info"]["senders"].push(pi_id);
-            }
-
-            // if the data property doesn't contain the sender ID,
-            // create a new array of data points
-            if (!testData["data"][pi_id]) {
-                testData["data"][pi_id] = {};
-            }
-
-            if (!testData["data"][pi_id][dataLabel]) {
-                testData["data"][pi_id][dataLabel] = [];
-            } else if (testData["data"][pi_id][dataLabel].length >= 100) {
-                testData["data"][pi_id][dataLabel].shift();
-            }
-
-            // push your data point
-            testData["data"][pi_id][dataLabel].push([timestamp, dataValue]);
-            // console.log(data);
-        }
-    }
-
-    getTestName() {
-        return this.runningTest;
-    }
-
-    stopTest(testName) {
-        this.runningTest = "";
-    }
-
-    isTestRunning() {
-        return !!this.runningTest;
-    }
+  isTestRunning() {
+    return !!this.runningTest;
+  }
 }
 
 const serverState = new ServerStateManager();
@@ -151,201 +151,201 @@ const serverState = new ServerStateManager();
 // - "rpi": for all (connected) rapsberry pis
 
 io.on("connection", (socket) => {
-    // Frontend to WSS: connection message
-    // adds this webclient to "client" room
-    socket.on("join_client", () => {
-        socket.join("client");
-        console.log(`Client ${socket.id} has joined`);
+  // Frontend to WSS: connection message
+  // adds this webclient to "client" room
+  socket.on("join_client", () => {
+    socket.join("client");
+    console.log(`Client ${socket.id} has joined`);
 
-        const message = {
-            command: "get_status",
-        };
-        mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
+    const message = {
+      command: "get_status",
+    };
+    mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
 
-        // Send the current allData to the client
-        io.to("client").emit("status_rpis", serverState.getPisAsArray());
-        io.to("client").emit("status_test", serverState.getTestName());
-        io.to("client").emit("all_data", serverState.getAllData());
-    });
+    // Send the current allData to the client
+    io.to("client").emit("status_rpis", serverState.getPisAsArray());
+    io.to("client").emit("status_test", serverState.getTestName());
+    io.to("client").emit("all_data", serverState.getAllData());
+  });
 
-    // socket disconnect handler
-    socket.on("disconnect", () => {
-        console.log(`Client ${socket.id} has disconnected`);
-    });
+  // socket disconnect handler
+  socket.on("disconnect", () => {
+    console.log(`Client ${socket.id} has disconnected`);
+  });
 
-    socket.on("connect_error", () => {
-        console.log(`User ${socket.id} had connection error`);
-    });
+  socket.on("connect_error", () => {
+    console.log(`User ${socket.id} had connection error`);
+  });
 
-    // Frontend to WSS: start test message
-    // tells all connected Pis to start collecting data
-    socket.on("start_test", (data) => {
-        if (serverState.isTestRunning()) return;
+  // Frontend to WSS: start test message
+  // tells all connected Pis to start collecting data
+  socket.on("start_test", (data) => {
+    if (serverState.isTestRunning()) return;
 
-        const testName = data.testName;
-        serverState.startTest(testName);
-        console.log(`Starting test "${testName}"`);
+    const testName = data.testName;
+    serverState.startTest(testName);
+    console.log(`Starting test "${testName}"`);
 
-        // send command to MQTT clients
-        const message = {
-            command: "start",
-            test_name: serverState.getTestName(),
-        };
-        mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
+    // send command to MQTT clients
+    const message = {
+      command: "start",
+      test_name: serverState.getTestName(),
+    };
+    mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
 
-        io.to("client").emit("all_data", serverState.getAllData());
-        io.to("client").emit("status_test", serverState.getTestName());
-    });
+    io.to("client").emit("all_data", serverState.getAllData());
+    io.to("client").emit("status_test", serverState.getTestName());
+  });
 
-    // Frontend to WSS: test stop messages
-    // tells all connected Pis to stop collecting data
-    socket.on("stop_test_server", (data) => {
-        const testName = data.testName;
-        if (serverState.getTestName() != testName) {
-            console.error(`Error: Test "${testName}" is not running`);
-            return;
-        }
+  // Frontend to WSS: test stop messages
+  // tells all connected Pis to stop collecting data
+  socket.on("stop_test_server", (data) => {
+    const testName = data.testName;
+    if (serverState.getTestName() != testName) {
+      console.error(`Error: Test "${testName}" is not running`);
+      return;
+    }
 
-        console.log(`Stopping test "${testName}"`);
+    console.log(`Stopping test "${testName}"`);
 
-        // send command to MQTT clients
-        const message = {
-            command: "stop",
-            test_name: serverState.getTestName(),
-        };
-        mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
+    // send command to MQTT clients
+    const message = {
+      command: "stop",
+      test_name: serverState.getTestName(),
+    };
+    mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
 
-        serverState.stopTest();
-        io.to("client").emit("status_test", serverState.getTestName());
-    });
+    serverState.stopTest();
+    io.to("client").emit("status_test", serverState.getTestName());
+  });
 
-    // returns the status of the current test
-    socket.on("get_tests", () => {
-        io.to("client").emit("status_test", serverState.getTestName());
-    });
+  // returns the status of the current test
+  socket.on("get_tests", () => {
+    io.to("client").emit("status_test", serverState.getTestName());
+  });
 });
 
 // MQTT Client Stuff
 // Topics for communication
 mqtt_client.on("connect", () => {
-    console.log("Connected to MQTT broker.");
+  console.log("Connected to MQTT broker.");
 
-    // Request status of all connected Raspberry Pis
+  // Request status of all connected Raspberry Pis
+  const message = {
+    command: "get_status",
+  };
+  mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
+
+  // Subscribe to topics
+  // mqtt_client.subscribe(COMMAND_TOPIC, { qos: 1 });
+  mqtt_client.subscribe(DATA_TOPIC, { qos: 0 });
+  mqtt_client.subscribe(STATUS_TOPIC, { qos: 1 });
+
+  // If no test is running, stop all Raspberry Pis
+  if (!serverState.isTestRunning()) {
     const message = {
-        command: "get_status",
+      command: "stop",
+      test_name: "",
     };
     mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
-
-    // Subscribe to topics
-    // mqtt_client.subscribe(COMMAND_TOPIC, { qos: 1 });
-    mqtt_client.subscribe(DATA_TOPIC, { qos: 0 });
-    mqtt_client.subscribe(STATUS_TOPIC, { qos: 1 });
-
-    // If no test is running, stop all Raspberry Pis
-    if (!serverState.isTestRunning()) {
-        const message = {
-            command: "stop",
-            test_name: "",
-        };
-        mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
-    }
+  }
 });
 
 mqtt_client.on("disconnect", () => {
-    console.log("Disconnected from MQTT broker");
-    // Remove all Raspberry Pis from the server state
-    serverState.removeAllPis();
-    io.to("client").emit("status_rpis", serverState.getPisAsArray());
+  console.log("Disconnected from MQTT broker");
+  // Remove all Raspberry Pis from the server state
+  serverState.removeAllPis();
+  io.to("client").emit("status_rpis", serverState.getPisAsArray());
 });
 
 // Handle incoming messages from the subscribed topic
 mqtt_client.on("message", (topic, message) => {
-    // console.log(`Received message from ${topic}: ${message.toString()}`);
-    // Status messages
-    if (topic === STATUS_TOPIC) {
-        const data = JSON.parse(message.toString());
-        const { id, status } = data;
+  // console.log(`Received message from ${topic}: ${message.toString()}`);
+  // Status messages
+  if (topic === STATUS_TOPIC) {
+    const data = JSON.parse(message.toString());
+    const { id, status } = data;
 
-        if (status === "online") serverState.addPi(id);
-        if (status === "offline") serverState.removePi(id);
+    if (status === "online") serverState.addPi(id);
+    if (status === "offline") serverState.removePi(id);
 
-        io.to("client").emit("status_rpis", serverState.getPisAsArray());
-    }
+    io.to("client").emit("status_rpis", serverState.getPisAsArray());
+  }
 
-    // Sensor data
-    if (topic === DATA_TOPIC) {
-        // console.log("received raw", message.toString());
-        const base64Payload = message.toString("base64");
-        const binaryPayload = Uint8Array.from(atob(base64Payload), (c) =>
-            c.charCodeAt(0)
-        );
+  // Sensor data
+  if (topic === DATA_TOPIC) {
+    // console.log("received raw", message.toString());
+    const base64Payload = message.toString("base64");
+    const binaryPayload = Uint8Array.from(atob(base64Payload), (c) =>
+      c.charCodeAt(0),
+    );
 
-        const decompressedData = pako.inflate(binaryPayload);
+    const decompressedData = pako.inflate(binaryPayload);
 
-        const stringLimit = 30;
-        const fixedPart = decompressedData.slice(0, 4 * stringLimit);
-        const variablePart = decompressedData.slice(4 * stringLimit);
+    const stringLimit = 46;
+    const fixedPart = decompressedData.slice(0, 4 * stringLimit);
+    const variablePart = decompressedData.slice(4 * stringLimit);
 
-        const decoder = new TextDecoder("utf-8");
+    const decoder = new TextDecoder("utf-8");
 
-        const id = decoder
-            .decode(fixedPart.slice(0, stringLimit))
-            .replace(/\0/g, "")
-            .trim();
+    const id = decoder
+      .decode(fixedPart.slice(0, stringLimit))
+      .replace(/\0/g, "")
+      .trim();
 
-        const testName = decoder
-            .decode(fixedPart.slice(stringLimit, 2 * stringLimit))
-            .replace(/\0/g, "")
-            .trim();
-        const dataLabel = decoder
-            .decode(fixedPart.slice(2 * stringLimit, 3 * stringLimit))
-            .replace(/\0/g, "")
-            .trim();
-        const timestamp = parseFloat(
-            decoder
-                .decode(fixedPart.slice(3 * stringLimit, 4 * stringLimit))
-                .replace(/\0/g, "")
-                .trim()
-        );
+    const testName = decoder
+      .decode(fixedPart.slice(stringLimit, 2 * stringLimit))
+      .replace(/\0/g, "")
+      .trim();
+    const dataLabel = decoder
+      .decode(fixedPart.slice(2 * stringLimit, 3 * stringLimit))
+      .replace(/\0/g, "")
+      .trim();
+    const timestamp = parseFloat(
+      decoder
+        .decode(fixedPart.slice(3 * stringLimit, 4 * stringLimit))
+        .replace(/\0/g, "")
+        .trim(),
+    );
 
-        const dataValue = msgpack.decode(variablePart);
+    const dataValue = msgpack.decode(variablePart);
 
-        // const data = message.toString().split("|");
-        // const [id, testName, timestamp, name, packedValue] = data;
+    // const data = message.toString().split("|");
+    // const [id, testName, timestamp, name, packedValue] = data;
 
-        // let value = JSON.parse(packedValue);
-        // let floatTimeStamp = parseFloat(timestamp);
+    // let value = JSON.parse(packedValue);
+    // let floatTimeStamp = parseFloat(timestamp);
 
-        // if (typeof value === "string" && !isNaN(parseFloat(value))) {
-        //     value = parseFloat(value);
-        // } else if (typeof value === "string" && !isNaN(parseInt(value))) {
-        //     value = parseInt(value);
-        // }
+    // if (typeof value === "string" && !isNaN(parseFloat(value))) {
+    //     value = parseFloat(value);
+    // } else if (typeof value === "string" && !isNaN(parseInt(value))) {
+    //     value = parseInt(value);
+    // }
 
-        console.log("Received data ", [
-            id,
-            testName,
-            timestamp,
-            dataLabel,
-            dataValue,
-        ]);
+    console.log("Received data ", [
+      id,
+      testName,
+      timestamp,
+      dataLabel,
+      dataValue,
+    ]);
 
-        // // update server state
-        serverState.addDataPoint({
-            testName,
-            dataLabel,
-            dataValue,
-            pi_id: id,
-            timestamp,
-        });
+    // // update server state
+    serverState.addDataPoint({
+      testName,
+      dataLabel,
+      dataValue,
+      pi_id: id,
+      timestamp,
+    });
 
-        // broadcast to web clients
-        io.to("client").emit("all_data", serverState.getAllData());
-    }
+    // broadcast to web clients
+    io.to("client").emit("all_data", serverState.getAllData());
+  }
 });
 
 server.listen(WSS_PORT, () => {
-    console.log("server is running");
+  console.log("server is running");
 });
 
 // Send messsage to stop previously running tests
