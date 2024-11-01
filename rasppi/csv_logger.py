@@ -25,10 +25,10 @@ def open_file_with_directories(file_path, mode="w", newline="\n"):
 
 def get_file_name(test_name, timestamp):
     """Generate a unique file name for each test."""
-    directory = f"tests/{timestamp.strftime('%Y_%m_%d')}"
+    directory = f"tests/{timestamp.strftime('%Y_%m_%d')}/{test_name}"
     if not os.path.exists(directory):
         os.makedirs(directory)
-    return f"{directory}/{test_name}/{timestamp.strftime('%H_%M')}_{test_name}_PI{DAQ_PI_ID}.csv"
+    return f"{directory}/{timestamp.strftime('%H_%M')}_{test_name}_PI{DAQ_PI_ID}.csv"
 
 def open_new_file(test_name, timestamp):
     with csv_file_lock:

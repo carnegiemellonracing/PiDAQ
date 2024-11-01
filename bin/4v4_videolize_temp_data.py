@@ -118,12 +118,15 @@ def render(timestamp, frames, duration):
     )
     plt.close(fig)
 
+
 with open(frames_txt_path, "w") as timestamp_file:
+    progress = 0
     timestamps = [datetime.fromisoformat(frame[0]) for frame in frames]
 
     # Find the index of the smallest timestamp
 
     while True:
+        progress += 1
         validTimestamps = [t for t in timestamps if t is not None]
         if len(validTimestamps) == 0:
             break
@@ -143,6 +146,8 @@ with open(frames_txt_path, "w") as timestamp_file:
 
         if next_frame is not None:
             frames[smallestIndex] = next_frame
+        
+        print(f"Progress: #{progress}", end="\r")
 
 #     if first_timestamp is None:
 #         first_timestamp = raw_timestamp

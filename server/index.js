@@ -126,6 +126,13 @@ class ServerStateManager {
   isTestRunning() {
     return !!this.runningTest;
   }
+
+  cleanupOldData() {
+    Object.keys(this.testData).filter((name) => name!= this.runningTest).map((key) => {
+      delete this.testData[key
+      ]
+    })
+  }
 }
 
 const serverState = new ServerStateManager();
@@ -192,6 +199,8 @@ io.on("connection", (socket) => {
       test_name: serverState.getTestName(),
     };
     mqtt_client.publish(COMMAND_TOPIC, JSON.stringify(message), { qos: 1 });
+
+    serverState.cleanupOldData();
 
     io.to("client").emit("all_data", serverState.getAllData());
     io.to("client").emit("status_test", serverState.getTestName());
