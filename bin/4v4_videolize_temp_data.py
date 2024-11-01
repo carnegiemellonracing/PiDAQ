@@ -14,7 +14,9 @@ import tempfile
 import argparse
 
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
-parser.add_argument("folder", type=str, help="Name of folder that contains csv files to be processed")
+parser.add_argument(
+    "folder", type=str, help="Name of folder that contains csv files to be processed"
+)
 parser.add_argument(
     "-s", "--speed", default=1, type=int, help="Speed the video will be in"
 )
@@ -35,7 +37,7 @@ if args.min:
 if args.max:
     vmax = args.max
 
-fileNames = os.listdir(args.folder);
+fileNames = os.listdir(args.folder)
 
 
 first_timestamp = None
@@ -48,6 +50,7 @@ line_num = 0
 piIds = [f[-5:-4] for f in fileNames if f.endswith(".csv")]
 files = [open(os.path.join(args.folder, f)) for f in fileNames if f.endswith(".csv")]
 
+
 def get_next_frame(reader):
     while True:
         row = next(reader, None)
@@ -56,8 +59,9 @@ def get_next_frame(reader):
         if len(row) > 0 and row[1] == "tire_temp_frame":
             return row
 
+
 readers = [csv.reader(f) for f in files]
-[next(reader) for reader in readers] # Skip header
+[next(reader) for reader in readers]  # Skip header
 
 frames = [get_next_frame(reader) for reader in readers]
 
@@ -77,14 +81,18 @@ for i in kill:
 
 first_timestamp = min([datetime.fromisoformat(frame[0]) for frame in frames])
 
+PI_ID_TO_FRAME_POSITION = [[0, 0], [1, 0], [1, 1], [0, 1]]
+
+
 def render(timestamp, frames, duration):
-    fig, axs = plt.subplots(2,2)
+    global piIds
+    fig, axs = plt.subplots(2, 2)
 
     for i in range(len(frames)):
-        ax = axs[i//2][i%2]
-        plt.subplot(2, 2, i + 1)
+        [x, y] = PI_ID_TO_FRAME_POSITION[int(piIds[i])]
+        ax = axs[y][x]
         therm1 = ax.imshow(np.zeros((24, 32)), vmin=vmin, vmax=vmax, cmap="coolwarm")
-        ax.set_title("Thermal Camera Data")
+        # ax.set_title("Thermal Camera Data")
         frame_data = frames[i][2]
         if frame_data.strip() == "":
             print("Empty line. Skipping")
@@ -92,8 +100,11 @@ def render(timestamp, frames, duration):
         frame = None
         try:
             frame = [
-                int(j)/100
-                for j in frame_data.replace("[", "").replace("]", "").replace("'", "").split(",")
+                int(j) / 100
+                for j in frame_data.replace("[", "")
+                .replace("]", "")
+                .replace("'", "")
+                .split(",")
             ]
         except Exception as e:
             print(f"Error parsing frame data on line {line_num}: {e}")
@@ -139,15 +150,27 @@ with open(frames_txt_path, "w") as timestamp_file:
             timestamps[smallestIndex] = datetime.fromisoformat(next_frame[0])
 
         validTimestamps = [t for t in timestamps if t is not None]
-        next_timestamp = None if len(validTimestamps) == 0 else min([t for t in timestamps if t is not None])
-        duration = max(0.01, 1 if next_timestamp == None else (next_timestamp - smallest).total_seconds())
+        next_timestamp = (
+            None
+            if len(validTimestamps) == 0
+            else min([t for t in timestamps if t is not None])
+        )
+        duration = max(
+            0.01,
+            (
+                1
+                if next_timestamp == None
+                else (next_timestamp - smallest).total_seconds()
+            ),
+        )
 
         render(smallest, frames, duration)
 
         if next_frame is not None:
             frames[smallestIndex] = next_frame
-        
+
         print(f"Progress: #{progress}", end="\r")
+print("", end="\n")
 
 #     if first_timestamp is None:
 #         first_timestamp = raw_timestamp
