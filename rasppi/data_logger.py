@@ -4,6 +4,7 @@ import csv_logger
 import datetime
 import json
 import os
+from utils import split_integer_to_bytes, limit_string_length
 
 import msgpack
 import struct
@@ -13,17 +14,6 @@ DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 STRING_BYTE_LIMIT = 46
 
 current_test_name = None
-
-def split_integer_to_bytes(value):
-    if not (0 <= value <= 0xFFFFFFFF):
-        raise ValueError("The input integer must be between 0 and 0xFFFFFFFF (inclusive).")
-
-    return [
-        (value >> 24) & 0xFF,  # Extract the most significant byte
-        (value >> 16) & 0xFF,  # Extract the second byte
-        (value >> 8) & 0xFF,   # Extract the third byte
-        value & 0xFF           # Extract the least significant byte
-    ]
 
 def log_data(name, value, timestamp=None, mqtt=True, csv=True):
     global current_test_name
@@ -42,8 +32,6 @@ def log_data(name, value, timestamp=None, mqtt=True, csv=True):
     if mqtt:
         payload = get_payload(DAQ_PI_ID,current_test_name,timestamp, name, value)
         mqtt_client.send_data(payload)
-
-
 
     if csv:
         csv_logger.log_data(timestamp=timestamp, name=name, value=value)
@@ -66,7 +54,3 @@ def get_payload(pi_id, current_test_name, timestamp, data_label, value):
     compressed_payload = zlib.compress(payload)
 
     return compressed_payload
-
-
-def limit_string_length(string, length):
-    return str(string).ljust(length)[:length]

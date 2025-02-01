@@ -12,8 +12,6 @@ sio = socketio.Client()
 DAQ_PI_ID = os.getenv("DAQ_PI_ID")
 
 # toggle sensors
-
-
 # set up and parse command line arguments
 parser = argparse.ArgumentParser(description="Process CLI arguments.")
 
@@ -106,7 +104,6 @@ def main():
 
     # init sensors
     last_test_name = None
-
     while True:
         if testStateManager.get_state():
             print("got into the while loop")

@@ -14,6 +14,7 @@ import threadingd
 import base64
 
 from logger import log, log_to_file
+from utils import compute_average_temp
 import mqtt
 import mcp
 
@@ -119,14 +120,6 @@ def handle_message(data):
     elif data["command"] == "stop":
         testStateManager.stop_test()
         log(f'Stopped test: "{test_name}"')
-
-def compute_average_temp(data_frame):
-    """Compute the average temperature from the MLX90640 data frame."""
-    data_frame = [float(temp) for temp in data_frame]
-    if len(data_frame) != 768:
-        raise ValueError("Data frame must contain exactly 768 temperature values.")
-
-    return int((sum(data_frame) / len(data_frame)))
 
 # Thread to collect sensor data and place it in the MQTT queue.
 def read_sensors():

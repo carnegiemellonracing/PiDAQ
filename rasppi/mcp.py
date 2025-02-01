@@ -4,7 +4,7 @@ import queue
 mcp_queue = queue.Queue()
 FILTER_ID = 0x69
 
-# Set up filter
+# Set up filters
 def setup_filter(mcp, filter_id):
 	mcp.set_mode(MODE_CONFIG)
 	mcp.write_register(0x60, 0x00)
@@ -18,9 +18,7 @@ def send_data(data):
   mcp_queue.put(data)
 
 
-'''
-Main Thread Function
-'''
+# Main Thread Function
 def run_mcp():
     # Initialize MCP2515 with default settings
     mcp = MCP2515(spi_channel=0, cs_pin=5)
