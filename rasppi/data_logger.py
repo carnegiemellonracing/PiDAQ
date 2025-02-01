@@ -1,4 +1,5 @@
 import mqtt as mqtt_client
+import mcp
 import csv_logger
 import datetime
 import json
@@ -13,6 +14,17 @@ STRING_BYTE_LIMIT = 46
 
 current_test_name = None
 
+def split_integer_to_bytes(value):
+    if not (0 <= value <= 0xFFFFFFFF):
+        raise ValueError("The input integer must be between 0 and 0xFFFFFFFF (inclusive).")
+
+    return [
+        (value >> 24) & 0xFF,  # Extract the most significant byte
+        (value >> 16) & 0xFF,  # Extract the second byte
+        (value >> 8) & 0xFF,   # Extract the third byte
+        value & 0xFF           # Extract the least significant byte
+    ]
+
 def log_data(name, value, timestamp=None, mqtt=True, csv=True):
     global current_test_name
     """Log data to MQTT and CSV files."""
@@ -20,11 +32,18 @@ def log_data(name, value, timestamp=None, mqtt=True, csv=True):
     if timestamp is None:
         timestamp = datetime.datetime.utcnow().isoformat()
 
+    print("Adding data to queue")
+    if name == "tire_temp_avg":
+        value = int(value*100)
+    if type(value) == type(110):
+        mcp.send_data(split_integer_to_bytes(value))
     # value = json.dumps(value)
 
     if mqtt:
         payload = get_payload(DAQ_PI_ID,current_test_name,timestamp, name, value)
         mqtt_client.send_data(payload)
+
+
 
     if csv:
         csv_logger.log_data(timestamp=timestamp, name=name, value=value)

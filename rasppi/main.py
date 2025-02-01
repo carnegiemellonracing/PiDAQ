@@ -10,11 +10,12 @@ import json
 import datetime
 import data_logger
 import csv_logger
-import threading
+import threadingd
 import base64
 
 from logger import log, log_to_file
 import mqtt
+import mcp
 
 # toggle sensors
 DISCONNECT_TIMEOUT_SECONDS = 300
@@ -33,6 +34,7 @@ parser.add_argument("-a", "--adc", action="store_true", help="Enable ADC sensor"
 parser.add_argument("-m", "--mlx", action="store_true", help="Enable MLX90640 sensor")
 parser.add_argument("-v", "--vl", action="store_true", help="Enable VL53L0X sensor")
 parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
+
 
 args = parser.parse_args()
 is_test_mode = args.test_mode
@@ -148,7 +150,8 @@ def read_sensors():
                     mlx_data_frame= read_frame(mlx)
 
                     send_mqtt =not last_full_frame or  (time.time() - last_full_frame) > 1
-                    data_logger.log_data(name="tire_temp_frame", value=mlx_data_frame, mqtt=send_mqtt)
+                    #data_logger.log_data(name="tire_temp_frame", value=mlx_data_frame, mqtt=send_mqtt)
+                    data_logger.log_data(name="tire_temp_frame", value=mlx_data_frame, mqtt=False)
                     if send_mqtt:
                         last_full_frame = time.time()
 
@@ -169,7 +172,7 @@ def read_sensors():
                 try:
                     vl53 = sensors.get("vl53")
                     ride_height = read_range(vl53)
-                    data_logger.log_data(name="ride_height", value=ride_height)
+                    data_logger.log_data(name="ride_height", value=ride_height, mqtt = False) #remove mqtt param to enable MQTT
                 except Exception as e:
                     log(f"Error reading VL53L0X: {e}")
 
@@ -180,7 +183,7 @@ def read_sensors():
                     for i in range(24 * 32):
                         tire_temp_frame.append(random.randint(1000, 9999))
                     send_mqtt =not last_full_frame or  (time.time() - last_full_frame) > 1
-                    data_logger.log_data(name="tire_temp_frame", value=tire_temp_frame, mqtt=send_mqtt)
+                    data_logger.log_data(name="tire_temp_frame", value=tire_temp_frame, mqtt=send_mqtt, )
                     average_temp = compute_average_temp(tire_temp_frame)
                     data_logger.log_data(name="tire_temp_avg", value=average_temp)
                 except Exception as e:
@@ -231,6 +234,11 @@ def main():
     # Start the sensor reading thread
     sensor_thread_instance = threading.Thread(target=read_sensors, daemon=True)
     sensor_thread_instance.start()
+
+    # Start mcp sending thread
+    mcp_thread_instance = threading.Thread(target = mcp.run_mcp, daemon=True)
+    mcp_thread_instance.start()
+
 
     # Keep the main thread alive to allow other threads to run
     try:
