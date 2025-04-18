@@ -14,7 +14,7 @@ def init_max11617(i2c):
 
 # Configuration Byte
 # REG = 0 (Configuration byte), SCAN1 = 1, SCAN0 = 1, CS3 = 0, CS2 = 1, CS1 = 0, CS0 = 1 (Channel 5), SGL/DIF = 1 (Single-ended mode)
-configuration_byte = 0b01101001
+configuration_byte = 0b01100001
 
 def convert_to_length(raw_value):
     return 215-(raw_value*75/4060)
