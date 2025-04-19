@@ -62,9 +62,9 @@ class HAL_MLX90640:
         control_reg1, status = self.i2c_read(0x800D, 2)
         control_reg1 = struct.unpack(">H", control_reg1[0:2])[0]
 
-        return frame_data + [control_reg1, status_reg]
-
-
+        return frame_data + [control_reg1, status_reg]       
+        
+    
 class MLX90640:
     DAQ_CONT_16x12 = 5
     MIN_TEMP_DEGC = -273.15
@@ -476,7 +476,16 @@ class MLX90640:
     def read_frame(self):
         raw_frame = self.hw.read_frame()
         frame = self.do_compensation(raw_frame)
-        return [int(100 * x) for x in frame]
+        
+        pixel_count = 32 * 24
+        total_temperature = 0
+        for i in range(pixel_count):
+            total_temperature += frame[i]
+        
+        avg_temperature = total_temperature / pixel_count
+        
+        return avg_temperature, frame
+
             
     
 class ParameterCodesEEPROM(enum.Enum):

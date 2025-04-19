@@ -30,7 +30,7 @@ class MAX11617:
             self.device.write(bytes([configuration_byte]))
     
 
-    def read(self):
+    def read_adc(self):
         result = bytearray(self.num_channels * 2)
 
         with self.device:
@@ -48,5 +48,5 @@ if __name__ == "__main__":
     max11617 = MAX11617(i2c, 0x35, 3)
 
     while True:
-        print(max11617.read())
+        print(max11617.read_adc())
         time.sleep(1)
