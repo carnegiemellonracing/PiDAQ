@@ -2,7 +2,7 @@ from smbus2 import SMBus, i2c_msg
 import struct
 import enum
 from ctypes import *
-
+import time
 from statistics import median
 from math import fabs
 
@@ -16,32 +16,26 @@ class HAL_MLX90640:
         self.i2c = i2c_handle
         self.i2c_addr = i2c_addr
 
-    def i2c_read(self, i2c_addr, addr, count=2):
+    def i2c_read(self, addr, count=2):
         addr_msb = addr >> 8 & 0x00FF
         addr_lsb = addr & 0x00FF
 
-        write = i2c_msg.write(i2c_addr, [addr_msb, addr_lsb])
-        read = i2c_msg.read(i2c_addr, count)
+        write = i2c_msg.write(self.i2c_addr, [addr_msb, addr_lsb])
+        read = i2c_msg.read(self.i2c_addr, count)
         self.i2c.i2c_rdwr(write, read)
         return bytes(list(read)), 0
 
-    def i2c_write(self, i2c_addr, addr, data):
+    def i2c_write(self, addr, data):
         cmd = []
         reg_msb = addr >> 8
         cmd.append(addr & 0x00FF)
 
         for d in data:
           cmd.append(d)
-        self.i2c.write_i2c_block_data(i2c_addr, reg_msb, cmd)
+        self.i2c.write_i2c_block_data(self.i2c_addr, reg_msb, cmd)
         return 0
 
-    def get_sensor_type(self, i2c_addr):
-        sensor, stat = self.i2c_read(i2c_addr, 0x240A, 2)
-        sensor = struct.unpack(">H",sensor)[0]
-        self.sensor_type = (sensor & 0x40) >> 6
-        return self.sensor_type
-
-    def read_frame(self, i2c_addr):
+    def read_frame(self):
         # 1. wait until new data is available
         # 2. read frame data
         # 3. clear new data available bit.
@@ -50,28 +44,22 @@ class HAL_MLX90640:
         new_data_available = False
         sub_page = 0
         while not new_data_available:
-            status_reg, status = self.i2c_read(i2c_addr, 0x8000, 2)
+            status_reg, status = self.i2c_read(0x8000, 2)
             status_reg = struct.unpack(">H", status_reg[0:2])[0]
             if status_reg & 0x0008:
                 new_data_available = True
             sub_page = status_reg & 0x0001
 
         # 2. read frame data
-        self.i2c_write(i2c_addr, 0x8000, struct.pack("<H", 0x0030))
+        self.i2c_write( 0x8000, struct.pack("<H", 0x0030))
 
-        if self.sensor_type is None:
-            self.get_sensor_type(i2c_addr)
-        if self.sensor_type == 0:
-            frame_data, status = self.i2c_read(i2c_addr, 0x0400, 832*2)  # 32 * 26 * 2
-            frame_data = list(struct.unpack(">832h", frame_data))
-        else:
-            frame_data, status = self.i2c_read(i2c_addr, 0x0400, 256*2)  # 16 * 16 * 2
-            frame_data = list(struct.unpack(">256h", frame_data))
+        frame_data, status = self.i2c_read(0x0400, 832*2)  # 32 * 26 * 2
+        frame_data = list(struct.unpack(">832h", frame_data))
 
         # 3. clear new data available bit.
-        self.i2c_write(i2c_addr, 0x8000, struct.pack("<H", status_reg & ~0x0008))
+        self.i2c_write(0x8000, struct.pack("<H", status_reg & ~0x0008))
 
-        control_reg1, status = self.i2c_read(i2c_addr, 0x800D, 2)
+        control_reg1, status = self.i2c_read(0x800D, 2)
         control_reg1 = struct.unpack(">H", control_reg1[0:2])[0]
 
         return frame_data + [control_reg1, status_reg]
@@ -91,22 +79,11 @@ class MLX90640:
         self.emissivity = 1.0
 
         self.frame_rate = frame_rate
-        if self.hw.get_sensor_type(0x33) == 0:
-            self.frame_length_bytes = 32 * 26 * 2
-            self.eeprom = Mlx90640EEPROM(self)
-        else:
-            self.frame_length_bytes = 16 * 16 * 2
-            self.eeprom = Mlx90641EEPROM(self)
-
-    def init(self):
+        self.frame_length_bytes = 32 * 26 * 2
+        self.eeprom = Mlx90640EEPROM(self)
         self.eeprom.read_eeprom_from_device()
         self.calculate_parameters()
 
-    def set_vdd(self, vdd):
-        """Set Vdd of the sensor"""
-        # if supported...
-        if callable(getattr(self.hw, 'set_vdd', None)):
-            self.hw.set_vdd(vdd)
 
     @property
     def frame_rate(self):
@@ -119,7 +96,7 @@ class MLX90640:
         :param float frame_rate: the new frame rate for the camera
         """
         # set the refresh rate on the chip
-        ctrl_reg_1, status = self.hw.i2c_read(self.i2c_addr, 0x800D, 2)
+        ctrl_reg_1, status = self.hw.i2c_read(0x800D, 2)
         if 0 != status:
             raise I2CAcknowledgeError("Error during read of Control register 1")
         ctrl_reg_1 = struct.unpack(">H", ctrl_reg_1)[0]  # TODO find endian
@@ -132,16 +109,10 @@ class MLX90640:
             ctrl_reg_1 &= 0xFC7F  # clear the 3 bits that represent the frame rate
             ctrl_reg_1 |= frame_rate_code << 7
 
-        status = self.hw.i2c_write(self.i2c_addr, 0x800D, struct.pack(">H", ctrl_reg_1))
+        status = self.hw.i2c_write(0x800D, struct.pack(">H", ctrl_reg_1))
         if 0 != status:
             raise I2CAcknowledgeError("Error during write of Control register 1")
         self.__frame_rate = frame_rate
-
-        self.set_vdd(3.3)
-
-    def clear_error(self, frame_rate_hz):
-        if callable(getattr(self.hw, 'clear_error', None)):
-            self.hw.clear_error(self.i2c_addr, frame_rate_hz)
 
     @staticmethod
     def frame_rate_to_bit_mask(f_rate):
@@ -151,39 +122,6 @@ class MLX90640:
         else:
             return None
 
-    def measure_vdd(self):
-        """
-        Measure Vdd of the sensor
-
-        @:return vdd
-        """
-        if callable(getattr(self.hw, 'measure_vdd', None)):
-            return self.hw.measure_vdd()
-        return None
-
-    def get_hardware_id(self):
-        """
-        :return: bytes array representing the hardware id
-        """
-        return self.hw.get_hardware_id()
-
-    def read_frame(self):
-        """
-        Sends a read request to the EVB. If the EVB has buffered any frames (the EVB will buffer up to 4 frames)
-        a list of them is returned. If no frames have been buffered None will be returned.
-        a frame is an array with size 32 * 26 containing signed 16 bit integers.
-
-        :return: list of frames (each frame is a list of 32 * 26 signed 16 bit ints) or None
-        :raises: ValueError - data received from EVB is not at the expected length, or no data is received
-        """
-        return self.hw.read_frame(self.i2c_addr)
-
-    def i2c_read(self, addr, count=2):
-        return self.hw.i2c_read(self.i2c_addr, addr, count)
-
-    def i2c_write(self, addr, data):
-        return self.hw.i2c_write(self.i2c_addr, addr, data)
-
     def do_compensation(self, raw_frame, add_ambient_temperature=False):
         """
         Calculates the temperatures for each pixel
@@ -191,43 +129,9 @@ class MLX90640:
         :param add_ambient_temperature: flag to add ambient temperature at the end of the frame array.
         :return: the calculated frame as a one dimensional array
         """
-        if self.hw.sensor_type == 0:
-            np = 32 * 24
-        else:
-            np = 16 * 12
+
+        np = 32 * 24
         info_data = raw_frame[np:]
-
-        if self.hw.sensor_type == 1:
-            # ToDo: get VDD_pix out of info_data
-            info_data[42], status = self.i2c_read(0x05AA, 2)
-            if 0 != status:
-                raise I2CAcknowledgeError("Error during read of Control register 1")
-            info_data[42] = (struct.unpack(">H", info_data[42])[0] - 65536) if (struct.unpack(">H", info_data[42])[0] > 32767) else (struct.unpack(">H", info_data[42])[0])  # TODO find endian
-
-            # ToDo: get Ta_PTAT out of info_data
-            info_data[32], status = self.i2c_read(0x05A0, 2)
-            if 0 != status:
-                raise I2CAcknowledgeError("Error during read of Control register 1")
-            info_data[32] = (struct.unpack(">H", info_data[32])[0] - 65536) if (struct.unpack(">H", info_data[32])[0] > 32767) else (struct.unpack(">H", info_data[32])[0])  # TODO find endian
-
-            # ToDo: get Ta_VBE out of info_data
-            info_data[0], status = self.i2c_read(0x0580, 2)
-            if 0 != status:
-                raise I2CAcknowledgeError("Error during read of Control register 1")
-            info_data[0] = (struct.unpack(">H", info_data[0])[0] - 65536) if (struct.unpack(">H", info_data[0])[0] > 32767) else (struct.unpack(">H", info_data[0])[0])  # TODO find endian
-
-            # ToDo: get GAIN_RAM out of info_data
-            info_data[10], status = self.i2c_read(0x058A, 2)
-            if 0 != status:
-                raise I2CAcknowledgeError("Error during read of Control register 1")
-            info_data[10] = (struct.unpack(">H", info_data[10])[0] - 65536) if (struct.unpack(">H", info_data[10])[0] > 32767) else (struct.unpack(">H", info_data[10])[0])  # TODO find endian
-
-            # ToDo: get tgcValue out of info_data
-            info_data[8], status = self.i2c_read(0x0588, 2)
-            if 0 != status:
-                raise I2CAcknowledgeError("Error during read of Control register 1")
-            info_data[8] = (struct.unpack(">H", info_data[8])[0] - 65536) if (struct.unpack(">H", info_data[8])[0] > 32767) else (struct.unpack(">H", info_data[8])[0])  # TODO find endian
-
 
         # Calculation of actual Vdd [V] by MLX90640
         if fabs(self.calc_params.Kv_Vdd) < 1e-6:
@@ -329,10 +233,8 @@ class MLX90640:
         dTaPow4 = pow(Tamb - MLX90640.MIN_TEMP_DEGC, 4)
 
         # resulting frame without service data
-        if self.hw.sensor_type == 0:
-            result_frame = [0] * (32 * 24)
-        else:
-            result_frame = [0] * (16 * 12)
+
+        result_frame = [0] * (32 * 24)
 
         for i in range(np):
             if lControl1 & (1 << 12):
@@ -348,19 +250,9 @@ class MLX90640:
             Pix_os_ref = 0
             Kta = 0
             Kv = 0
-            if self.hw.sensor_type == 0:
-                Pix_os_ref = self.calc_params.Pix_os_ref[tidx][idxGlobal]
-                Kta = self.calc_params.Kta[tidx][idxGlobal]
-                Kv = self.calc_params.Kv[tidx][idxGlobal]
-            else:
-                if page:
-                    Pix_os_ref = self.calc_params.Pix_os_ref_SP1[tidx][idxGlobal]
-                    Kta = self.calc_params.Kta[tidx][idxGlobal]
-                    Kv = self.calc_params.Kv[tidx][idxGlobal]
-                else:
-                    Pix_os_ref = self.calc_params.Pix_os_ref_SP0[tidx][idxGlobal]
-                    Kta = self.calc_params.Kta[tidx][idxGlobal]
-                    Kv = self.calc_params.Kv[tidx][idxGlobal]
+            Pix_os_ref = self.calc_params.Pix_os_ref[tidx][idxGlobal]
+            Kta = self.calc_params.Kta[tidx][idxGlobal]
+            Kv = self.calc_params.Kv[tidx][idxGlobal]
 
             Pix_os = Pix_os_ref * (1 + Kta * dDeltaTa) * (1 + Kv * dDeltaV)
 
@@ -394,86 +286,6 @@ class MLX90640:
             result_frame.append(Tamb)
         return result_frame
 
-    def do_handle_bad_pixels(self, compensated_frame):
-        result = compensated_frame
-        if self.hw.sensor_type == 0:  # 90640
-            for pixel_i in self.eeprom.bad_pixels:
-                col = pixel_i & 0x1F
-                row = pixel_i >> 5
-                if pixel_i == 0 << 5 + 0:  # upper left corner
-                    result[pixel_i] = (result[0 << 5 + 1] + result[1 << 5 + 0] + result[1 << 5 + 1]) / 3
-                    continue
-                if pixel_i == 0 << 5 + 31:  # upper right corner
-                    result[pixel_i] = (result[0 << 5 + 30] + result[1 << 5 + 31] + result[1 << 5 + 30]) / 3
-                    continue
-                if pixel_i == 23 << 5 + 0:  # lower left corner
-                    result[pixel_i] = (result[23 << 5 + 1] + result[22 << 5 + 0] + result[22 << 5 + 1]) / 3
-                    continue
-                if pixel_i == 23 << 5 + 31:  # lower right corner
-                    result[pixel_i] = (result[23 << 5 + 30] + result[22 << 5 + 31] + result[22 << 5 + 30]) / 3
-                    continue
-
-                if col == 0:  # first col
-                    result[pixel_i] = (result[(row - 1) << 5 + col] + result[(row + 1) << 5 + col] + result[
-                        row << 5 + col + 1]) / 3
-                    continue
-                if col == 31:  # last col
-                    result[pixel_i] = (result[(row - 1) << 5 + col] + result[(row + 1) << 5 + col] + result[
-                        row << 5 + col - 1]) / 3
-                    continue
-
-                if row == 0:  # first row
-                    result[pixel_i] = (result[row << 5 + col - 1] + result[row << 5 + col + 1] + result[
-                        (row + 1) << 5 + col]) / 3
-                    continue
-                if row == 23:  # last row
-                    result[pixel_i] = (result[row << 5 + col - 1] + result[row << 5 + col + 1] + result[
-                        (row - 1) << 5 + col]) / 3
-                    continue
-                # pixel not on border
-                result[pixel_i] = (result[row << 5 + col - 1] + result[row << 5 + col + 1] + result[
-                    (row - 1) << 5 + col] + result[(row + 1) << 5 + col]) / 4
-
-        if self.hw.sensor_type == 1:  # 90641
-            for pixel_i in self.eeprom.bad_pixels:
-                col = pixel_i & 0x0F
-                row = pixel_i >> 4
-                if pixel_i == 0 << 4 + 0:  # upper left corner
-                    result[pixel_i] = (result[0 << 4 + 1] + result[1 << 4 + 0] + result[1 << 4 + 1]) / 3
-                    continue
-                if pixel_i == 0 << 4 + 15:  # upper right corner
-                    result[pixel_i] = (result[0 << 4 + 14] + result[1 << 4 + 15] + result[1 << 4 + 14]) / 3
-                    continue
-                if pixel_i == 11 << 4 + 0:  # lower left corner
-                    result[pixel_i] = (result[11 << 4 + 1] + result[10 << 4 + 0] + result[10 << 4 + 1]) / 3
-                    continue
-                if pixel_i == 11 << 4 + 15:  # lower right corner
-                    result[pixel_i] = (result[11 << 4 + 14] + result[10 << 4 + 15] + result[10 << 4 + 14]) / 3
-                    continue
-
-                if col == 0:  # first col
-                    result[pixel_i] = (result[(row - 1) << 4 + col] + result[(row + 1) << 4 + col] + result[
-                        row << 4 + col + 1]) / 3
-                    continue
-                if col == 15:  # last col
-                    result[pixel_i] = (result[(row - 1) << 4 + col] + result[(row + 1) << 4 + col] + result[
-                        row << 4 + col - 1]) / 3
-                    continue
-
-                if row == 0:  # first row
-                    result[pixel_i] = (result[row << 4 + col - 1] + result[row << 4 + col + 1] + result[
-                        (row + 1) << 4 + col]) / 3
-                    continue
-                if row == 11:  # last row
-                    result[pixel_i] = (result[row << 4 + col - 1] + result[row << 4 + col + 1] + result[
-                        (row - 1) << 4 + col]) / 3
-                    continue
-                # pixel not on border
-                result[pixel_i] = (result[row << 4 + col - 1] + result[row << 4 + col + 1] + result[
-                    (row - 1) << 4 + col] + result[(row + 1) << 4 + col]) / 4
-
-        return result
-
     @property
     def emissivity(self):
         return self.m_fEmissivity
@@ -487,389 +299,186 @@ class MLX90640:
         Calculate the necessary parameters from the eeprom. They are needed for the calculation of temperatures.
         :return: nothing
         """
-        if self.hw.sensor_type == 0:
-            self.calc_params.version = 5
+        self.calc_params.version = 5
 
-            self.calc_params.Id0 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID1)
-            self.calc_params.Id1 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID2)
-            self.calc_params.Id2 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID3)
+        self.calc_params.Id0 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID1)
+        self.calc_params.Id1 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID2)
+        self.calc_params.Id2 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID3)
 
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeVdd_25)
-            self.calc_params.Vdd_25 = (l - 256) * (1 << 5) - (1 << 13)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeK_Vdd)
-            self.calc_params.Kv_Vdd = c_int8(l).value * (1 << 5)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeRes_control)
-            self.calc_params.Res_scale = (1 << l)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePTAT_25)
-            self.calc_params.VPTAT_25 = c_int16(l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_PTAT)
-            self.calc_params.Kv_PTAT = ((l - 64) if (l > 31) else l) / (1 << 12)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKt_PTAT)
-            self.calc_params.Kt_PTAT = ((l - 1024) if (l > 511) else l) / (1 << 3)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_PTAT)
-            self.calc_params.alpha_ptat = l / 4 + 8
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeGAIN)
-            self.calc_params.GainMeas_25_3v2 = c_int16(l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeVdd_25)
+        self.calc_params.Vdd_25 = (l - 256) * (1 << 5) - (1 << 13)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeK_Vdd)
+        self.calc_params.Kv_Vdd = c_int8(l).value * (1 << 5)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeRes_control)
+        self.calc_params.Res_scale = (1 << l)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePTAT_25)
+        self.calc_params.VPTAT_25 = c_int16(l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_PTAT)
+        self.calc_params.Kv_PTAT = ((l - 64) if (l > 31) else l) / (1 << 12)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKt_PTAT)
+        self.calc_params.Kt_PTAT = ((l - 1024) if (l > 511) else l) / (1 << 3)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_PTAT)
+        self.calc_params.alpha_ptat = l / 4 + 8
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeGAIN)
+        self.calc_params.GainMeas_25_3v2 = c_int16(l).value
 
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePix_os_average)
-            Pix_os_average = c_int16(l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Occ_rem)
-            Scale_occ_rem = 1 << l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Occ_col)
-            Scale_occ_col = 1 << l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Occ_row)
-            Scale_occ_row = 1 << l
-            OccRow = [0] * 24
-            OccCol = [0] * 32
-            for r in range(24):
-                l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOCC_row, r)
-                OccRow[r] = ((l - 16) if (l > 7) else l) * Scale_occ_row
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePix_os_average)
+        Pix_os_average = c_int16(l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Occ_rem)
+        Scale_occ_rem = 1 << l
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Occ_col)
+        Scale_occ_col = 1 << l
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Occ_row)
+        Scale_occ_row = 1 << l
+        OccRow = [0] * 24
+        OccCol = [0] * 32
+        for r in range(24):
+            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOCC_row, r)
+            OccRow[r] = ((l - 16) if (l > 7) else l) * Scale_occ_row
 
+        for c in range(32):
+            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOCC_column, c)
+            OccCol[c] = ((l - 16) if (l > 7) else l) * Scale_occ_col
+
+        for r in range(24):
             for c in range(32):
-                l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOCC_column, c)
-                OccCol[c] = ((l - 16) if (l > 7) else l) * Scale_occ_col
+                idx = r * 32 + c
+                l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Offset, idx)
+                self.calc_params.Pix_os_ref[0][idx] = Pix_os_average + OccRow[r] + OccCol[c] + \
+                                                        ((l - 64) if (l > 31) else l) * Scale_occ_rem
+                for t in range(1, TCalcParams.MAX_CAL_RANGES):
+                    self.calc_params.Pix_os_ref[t][idx] = self.calc_params.Pix_os_ref[0][idx]
 
-            for r in range(24):
-                for c in range(32):
-                    idx = r * 32 + c
-                    l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Offset, idx)
-                    self.calc_params.Pix_os_ref[0][idx] = Pix_os_average + OccRow[r] + OccCol[c] + \
-                                                          ((l - 64) if (l > 31) else l) * Scale_occ_rem
-                    for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                        self.calc_params.Pix_os_ref[t][idx] = self.calc_params.Pix_os_ref[0][idx]
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_scale)
+        Alpha_scale = (1 << l) * (1 << 30)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePix_sens_average)
+        Pix_sens_average = c_int16(l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Acc_rem)
+        Scale_Acc_rem = 1 << l
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Acc_col)
+        Scale_Acc_col = 1 << l
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Acc_row)
+        Scale_Acc_row = 1 << l
+        AccRow = [0] * 24
+        AccCol = [0] * 32
+        for r in range(24):
+            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeACC_row, r)
+            AccRow[r] = ((l - 16) if (l > 7) else l) * Scale_Acc_row
 
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_scale)
-            Alpha_scale = (1 << l) * (1 << 30)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePix_sens_average)
-            Pix_sens_average = c_int16(l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Acc_rem)
-            Scale_Acc_rem = 1 << l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Acc_col)
-            Scale_Acc_col = 1 << l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_Acc_row)
-            Scale_Acc_row = 1 << l
-            AccRow = [0] * 24
-            AccCol = [0] * 32
-            for r in range(24):
-                l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeACC_row, r)
-                AccRow[r] = ((l - 16) if (l > 7) else l) * Scale_Acc_row
+        for c in range(32):
+            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeACC_column, c)
+            AccCol[c] = ((l - 16) if (l > 7) else l) * Scale_Acc_col
 
+        for r in range(24):
             for c in range(32):
-                l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeACC_column, c)
-                AccCol[c] = ((l - 16) if (l > 7) else l) * Scale_Acc_col
+                idx = r * 32 + c
+                l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Alpha, idx)
+                self.calc_params.alpha[idx] = (Pix_sens_average + AccRow[r] + AccCol[c] +
+                                                ((l - 64) if (l > 31) else l) * Scale_Acc_rem) / Alpha_scale
 
-            for r in range(24):
-                for c in range(32):
-                    idx = r * 32 + c
-                    l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Alpha, idx)
-                    self.calc_params.alpha[idx] = (Pix_sens_average + AccRow[r] + AccCol[c] +
-                                                   ((l - 64) if (l > 31) else l) * Scale_Acc_rem) / Alpha_scale
-
-            Kta = [[0, 0], [0, 0]]
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_scale1)
-            Kta_scale1 = 1 << (l + 8)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_scale2)
-            Kta_scale2 = 1 << l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RO_CO)
-            Kta[0][0] = c_int8(l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RO_CE)
-            Kta[0][1] = c_int8(l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RE_CO)
-            Kta[1][0] = c_int8(l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RE_CE)
-            Kta[1][1] = c_int8(l).value
-            for r in range(24):
-                for c in range(32):
-                    idx = r * 32 + c
-                    l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Kta, idx)
-                    self.calc_params.Kta[0][idx] = (((l - 8) if (l > 3) else l) * Kta_scale2 + Kta[r % 2][c % 2]) / Kta_scale1
-                    for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                        self.calc_params.Kta[t][idx] = self.calc_params.Kta[0][idx]
-
-            Kv = [[0, 0], [0, 0]]
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_scale)
-            Kv_scale = 1 << l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RO_CO)
-            Kv[0][0] = ((l - 16) if (l > 7) else l) / Kv_scale
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RO_CE)
-            Kv[0][1] = ((l - 16) if (l > 7) else l) / Kv_scale
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RE_CO)
-            Kv[1][0] = ((l - 16) if (l > 7) else l) / Kv_scale
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RE_CE)
-            Kv[1][1] = ((l - 16) if (l > 7) else l) / Kv_scale
-            for r in range(24):
-                for c in range(32):
-                    idx = r * 32 + c
-                    self.calc_params.Kv[0][idx] = Kv[r % 2][c % 2]
-                    for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                        self.calc_params.Kv[t][idx] = self.calc_params.Kv[0][idx]
-
-            # as of v.2
-            # self.calc_params.Vdd_V0 = 3.3;             # actual value doesn't affect the results
-            self.calc_params.Ta_min[1] = -200.0
-            self.calc_params.Ta_max[1] = 0.0
-            self.calc_params.Ta0[1] = 25.0
-            self.calc_params.Ta_min[0] = -200.0  # Fixed only R2;
-            self.calc_params.Ta_max[0] = 1000.0
-            self.calc_params.Ta0[0] = 25.0
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeTemp_Step)
-            Temp_Step = l * 5  # TODO : (0-3) or (1-4)?
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeCT1)
-            ct1 = l * Temp_Step
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeCT2)
-            ct2 = l * Temp_Step
-            self.calc_params.Ta_min[2] = 60.0
-            self.calc_params.Ta_max[2] = ct1
-            self.calc_params.Ta0[2] = 25.0
-            self.calc_params.Ta_min[3] = ct1
-            self.calc_params.Ta_max[3] = ct2
-            self.calc_params.Ta0[3] = 25.0
-
-            # TGC[0] is not used
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_scale)
-            Alpha_scale = (1 << l) * (1 << 27)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeTGC)
-            self.calc_params.TGC[1] = c_int8(l).value / (1 << 5)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_CP_P0)
-            self.calc_params.alpha_TGC[0][1] = l / Alpha_scale
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_CP_P1_P0)
-            self.calc_params.alpha_TGC[1][1] = self.calc_params.alpha_TGC[0][1] * \
-                                               (1.0 + ((l - 64) if (l > 31) else l) / (1 << 7))
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOffset_CP_P0)
-            self.calc_params.Pix_os_ref_TGC[0][0][1] = c_double((l - 1024) if (l > 511) else l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOffset_CP_P1_P0)
-            self.calc_params.Pix_os_ref_TGC[0][1][1] = c_double((l - 64) if (l > 31) else l).value + \
-                                                       self.calc_params.Pix_os_ref_TGC[0][0][1]
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_CP)
-            self.calc_params.Kta_TGC[0][0][1] = c_int8(l).value / Kta_scale1
-            self.calc_params.Kta_TGC[0][1][1] = self.calc_params.Kta_TGC[0][0][1]
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_CP)
-            self.calc_params.Kv_TGC[0][0][1] = c_int8(l).value / Kv_scale
-            self.calc_params.Kv_TGC[0][1][1] = self.calc_params.Kv_TGC[0][0][1]
-            for page in range(TCalcParams.NUM_PAGES):
+        Kta = [[0, 0], [0, 0]]
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_scale1)
+        Kta_scale1 = 1 << (l + 8)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_scale2)
+        Kta_scale2 = 1 << l
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RO_CO)
+        Kta[0][0] = c_int8(l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RO_CE)
+        Kta[0][1] = c_int8(l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RE_CO)
+        Kta[1][0] = c_int8(l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_Avg_RE_CE)
+        Kta[1][1] = c_int8(l).value
+        for r in range(24):
+            for c in range(32):
+                idx = r * 32 + c
+                l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Kta, idx)
+                self.calc_params.Kta[0][idx] = (((l - 8) if (l > 3) else l) * Kta_scale2 + Kta[r % 2][c % 2]) / Kta_scale1
                 for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                    self.calc_params.Pix_os_ref_TGC[t][page][1] = self.calc_params.Pix_os_ref_TGC[0][page][1]
-                    self.calc_params.Kta_TGC[t][page][1] = self.calc_params.Kta_TGC[0][page][1]
-                    self.calc_params.Kv_TGC[t][page][1] = self.calc_params.Kv_TGC[0][page][1]
+                    self.calc_params.Kta[t][idx] = self.calc_params.Kta[0][idx]
 
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKsTa)
-            self.calc_params.KsTa = c_int8(l).value / (1 << 13)
-            # Ta_0_Alpha = 25;
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_KsTo)
-            ScaleKsTo = 1 << (l + 8)
-            # Only R2 (extended -200-1000)degC
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKsTo_R2)
-            self.calc_params.KsTo = c_int8(l).value / ScaleKsTo
-            # To_0_Alpha;            // default 0.0
-        else:
-            self.calc_params.version = 5
-
-            self.calc_params.Id0 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID1)
-            self.calc_params.Id1 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID2)
-            self.calc_params.Id2 = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeID3)
-
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeVdd_25)
-            self.calc_params.Vdd_25 = ((l - 2048) if (l>1023) else l) * 2**5
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeK_Vdd)
-            self.calc_params.Kv_Vdd = ((l - 2048) if (l>1023) else l) * 2**5
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeCalib_res_cont)
-            self.calc_params.Res_scale = l
-            l = 32 * self.eeprom.get_parameter_code((ParameterCodesEEPROM.CodePTAT_25), 0) + self.eeprom.get_parameter_code((ParameterCodesEEPROM.CodePTAT_25), 1)
-            self.calc_params.VPTAT_25 = c_int16(l).value
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_PTAT)
-            self.calc_params.Kv_PTAT = ((l - 2048) if (l > 1023) else l) / 2**12
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKt_PTAT)
-            self.calc_params.Kt_PTAT = ((l - 2048) if (l > 1023) else l) / 2**3
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_PTAT)
-            self.calc_params.alpha_ptat = l / 2**7
-            l = 32 * self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeGAIN, 0) + self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeGAIN, 1)
-            self.calc_params.GainMeas_25_3v2 = c_int16(l).value
-
-            l = 32 * self.eeprom.get_parameter_code((ParameterCodesEEPROM.CodePix_os_average), 0) + self.eeprom.get_parameter_code((ParameterCodesEEPROM.CodePix_os_average), 1)
-            offset_average = ((l - 65536) if (l>32767) else l)
-            offset_scale = self.eeprom.get_parameter_code((ParameterCodesEEPROM.CodeScale_occ_os))
-            for r in range(12):
-                for c in range(16):
-                    idx = r * 16 + c
-                    l = self.eeprom.get_parameter_code((ParameterCodesEEPROM.CodePixel_Offset), idx)
-                    self.calc_params.Pix_os_ref_SP0[0][idx] = offset_average + ((l - 2048) if (l > 1023) else l) * 2 ** offset_scale
-                    l = self.eeprom.get_parameter_code((ParameterCodesEEPROM.CodePixel_os), idx)
-                    self.calc_params.Pix_os_ref_SP1[0][idx] = offset_average + ((l - 2048) if (l > 1023) else l) * 2 ** offset_scale
-                    for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                        self.calc_params.Pix_os_ref_SP0[t][idx] = self.calc_params.Pix_os_ref_SP0[0][idx]
-                        self.calc_params.Pix_os_ref_SP1[t][idx] = self.calc_params.Pix_os_ref_SP1[0][idx]
-
-            for r in range(12):
-                for c in range(16):
-                    idx = r * 16 + c
-                    pixel_row = int(((16*(r-1)+c)-1) / 32)
-                    alpha_reference = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeRow_max, pixel_row) / (2**(self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_row, pixel_row)+20))
-                    l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Sensitivity, idx)
-                    self.calc_params.alpha[idx] = l / (2**11-1) * alpha_reference
-
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_avg)
-            Kta = ((l - 2048) if (l > 1023) else l)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_scale_1)
-            Kta_scale1 = 2**l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_scale_2)
-            Kta_scale2 = 2**l
-
-            for r in range(12):
-                for c in range(16):
-                    idx = r * 16 + c
-                    l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Kta, idx)
-                    self.calc_params.Kta[0][idx] = (((l - 64) if (l > 31) else l) * Kta_scale2 + Kta) / Kta_scale1
-                    for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                        self.calc_params.Kta[t][idx] = self.calc_params.Kta[0][idx]
-
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_avg)
-            Kv = ((l - 2048) if (l > 1023) else l)
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_scale_1)
-            Kv_scale1 = 2**l
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_scale_2)
-            Kv_scale2 = 2**l
-
-            for r in range(12):
-                for c in range(16):
-                    idx = r * 16 + c
-                    l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodePixel_Kv, idx)
-                    self.calc_params.Kv[0][idx] = (((l - 64) if (l > 31) else l) * Kv_scale2 + Kv) / Kv_scale1
-                    for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                        self.calc_params.Kv[t][idx] = self.calc_params.Kv[0][idx]
-            # as of v.2
-            # self.calc_params.Vdd_V0 = 3.3;             # actual value doesn't affect the results
-            self.calc_params.Ta_min[0] = -40.0  # Fixed only R2;
-            self.calc_params.Ta_max[0] = 20.0
-            self.calc_params.Ta0[0] = 25.0
-            self.calc_params.Ta_min[1] = -20.0
-            self.calc_params.Ta_max[1] = 0.0
-            self.calc_params.Ta0[1] = 25.0
-            self.calc_params.Ta_min[2] = 0.0
-            self.calc_params.Ta_max[2] = 80.0
-            self.calc_params.Ta0[2] = 25.0
-            self.calc_params.Ta_min[3] = 80.0
-            self.calc_params.Ta_max[3] = 120.0
-            self.calc_params.Ta0[3] = 25.0
-
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeTGC)
-            self.calc_params.TGC[1] = 0#l / 2**6
-
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_CP_scale)
-            Alpha_scale = l / 2**38
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_CP)
-            self.calc_params.alpha_TGC[0][1] = l / Alpha_scale
-
-            self.calc_params.Kta_TGC[0][0][1] = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_CP) / (2**(self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_CP_scale)))
-            self.calc_params.Kta_TGC[0][1][1] = self.calc_params.Kta_TGC[0][0][1]
-
-            self.calc_params.Kv_TGC[0][0][1] = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_CP) / (2**(self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_CP_scale)))
-            self.calc_params.Kv_TGC[0][1][1] = self.calc_params.Kv_TGC[0][0][1]
-
-            for page in range(TCalcParams.NUM_PAGES):
+        Kv = [[0, 0], [0, 0]]
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_scale)
+        Kv_scale = 1 << l
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RO_CO)
+        Kv[0][0] = ((l - 16) if (l > 7) else l) / Kv_scale
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RO_CE)
+        Kv[0][1] = ((l - 16) if (l > 7) else l) / Kv_scale
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RE_CO)
+        Kv[1][0] = ((l - 16) if (l > 7) else l) / Kv_scale
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_Avg_RE_CE)
+        Kv[1][1] = ((l - 16) if (l > 7) else l) / Kv_scale
+        for r in range(24):
+            for c in range(32):
+                idx = r * 32 + c
+                self.calc_params.Kv[0][idx] = Kv[r % 2][c % 2]
                 for t in range(1, TCalcParams.MAX_CAL_RANGES):
-                    self.calc_params.Kta_TGC[t][page][1] = self.calc_params.Kta_TGC[0][page][1]
-                    self.calc_params.Kv_TGC[t][page][1] = self.calc_params.Kv_TGC[0][page][1]
+                    self.calc_params.Kv[t][idx] = self.calc_params.Kv[0][idx]
 
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKsTa)
-            self.calc_params.KsTa = ((l - 2048) if (l > 1023) else l)  / 2**15
-            # Ta_0_Alpha = 25;
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKsTo_scale)
-            ScaleKsTo = 2 ** l
-            # Only R2 (extended -200-1000)degC
-            l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKsTo_R2)
-            self.calc_params.KsTo =  ((l - 2048) if (l > 1023) else l) / ScaleKsTo
-            # To_0_Alpha;            // default 0.0
+        # as of v.2
+        # self.calc_params.Vdd_V0 = 3.3;             # actual value doesn't affect the results
+        self.calc_params.Ta_min[1] = -200.0
+        self.calc_params.Ta_max[1] = 0.0
+        self.calc_params.Ta0[1] = 25.0
+        self.calc_params.Ta_min[0] = -200.0  # Fixed only R2;
+        self.calc_params.Ta_max[0] = 1000.0
+        self.calc_params.Ta0[0] = 25.0
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeTemp_Step)
+        Temp_Step = l * 5  # TODO : (0-3) or (1-4)?
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeCT1)
+        ct1 = l * Temp_Step
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeCT2)
+        ct2 = l * Temp_Step
+        self.calc_params.Ta_min[2] = 60.0
+        self.calc_params.Ta_max[2] = ct1
+        self.calc_params.Ta0[2] = 25.0
+        self.calc_params.Ta_min[3] = ct1
+        self.calc_params.Ta_max[3] = ct2
+        self.calc_params.Ta0[3] = 25.0
 
-    @staticmethod
-    def fake_read_frame(name: str):
-        """
-        Verify the calculation using a log from MlxCIRT
-        :param str name: name and path of the csv log generated from the demo
-        :return: (processed, raw) a frame for each call
-        """
-        with open(name) as f:
-            log = f.readlines()
+        # TGC[0] is not used
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_scale)
+        Alpha_scale = (1 << l) * (1 << 27)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeTGC)
+        self.calc_params.TGC[1] = c_int8(l).value / (1 << 5)
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_CP_P0)
+        self.calc_params.alpha_TGC[0][1] = l / Alpha_scale
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeAlpha_CP_P1_P0)
+        self.calc_params.alpha_TGC[1][1] = self.calc_params.alpha_TGC[0][1] * \
+                                            (1.0 + ((l - 64) if (l > 31) else l) / (1 << 7))
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOffset_CP_P0)
+        self.calc_params.Pix_os_ref_TGC[0][0][1] = c_double((l - 1024) if (l > 511) else l).value
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeOffset_CP_P1_P0)
+        self.calc_params.Pix_os_ref_TGC[0][1][1] = c_double((l - 64) if (l > 31) else l).value + \
+                                                    self.calc_params.Pix_os_ref_TGC[0][0][1]
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKta_CP)
+        self.calc_params.Kta_TGC[0][0][1] = c_int8(l).value / Kta_scale1
+        self.calc_params.Kta_TGC[0][1][1] = self.calc_params.Kta_TGC[0][0][1]
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKv_CP)
+        self.calc_params.Kv_TGC[0][0][1] = c_int8(l).value / Kv_scale
+        self.calc_params.Kv_TGC[0][1][1] = self.calc_params.Kv_TGC[0][0][1]
+        for page in range(TCalcParams.NUM_PAGES):
+            for t in range(1, TCalcParams.MAX_CAL_RANGES):
+                self.calc_params.Pix_os_ref_TGC[t][page][1] = self.calc_params.Pix_os_ref_TGC[0][page][1]
+                self.calc_params.Kta_TGC[t][page][1] = self.calc_params.Kta_TGC[0][page][1]
+                self.calc_params.Kv_TGC[t][page][1] = self.calc_params.Kv_TGC[0][page][1]
 
-        log = log[2:]
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKsTa)
+        self.calc_params.KsTa = c_int8(l).value / (1 << 13)
+        # Ta_0_Alpha = 25;
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeScale_KsTo)
+        ScaleKsTo = 1 << (l + 8)
+        # Only R2 (extended -200-1000)degC
+        l = self.eeprom.get_parameter_code(ParameterCodesEEPROM.CodeKsTo_R2)
+        self.calc_params.KsTo = c_int8(l).value / ScaleKsTo
+        # To_0_Alpha;            // default 0.0
 
-        for l in log:
-            l = l.split('||')
-            temps = [float(i) for i in l[0].split('|')[2:]]
-            raw = [float(i) for i in l[2].split('|')]
-            yield temps, raw
-
-
-class MLX90640Filters:
-    def deinterlace_filter(ir_image, subpage):
-        if subpage == 1:
-            chess = 0
-            for x in range(0, 24):
-                for y in range(chess, 32, 2):
-                    if (x == 0):
-                        if (y == 0):
-                            a = median([ir_image[x+1][y], ir_image[x][y+1], ir_image[x][y]])
-                        else:
-                            a = median([ir_image[x][y-1], ir_image[x+1][y], ir_image[x][y+1], ir_image[x][y]])
-                    elif (x == 23):
-                        if (y == 31):
-                            a = median([ir_image[x-1][y], ir_image[x][y-1], ir_image[x][y]])
-                        else:
-                            a = median([ir_image[x][y-1], ir_image[x-1][y], ir_image[x][y+1], ir_image[x][y]])
-                    elif ((y == 0) and (x%2 == 0)):
-                        a = median([ir_image[x-1][y], ir_image[x+1][y], ir_image[x][y+1], ir_image[x][y]])
-                    elif ((y == 31) and (x%2 == 1)):
-                        a = median([ir_image[x][y-1], ir_image[x-1][y], ir_image[x+1][y], ir_image[x][y]])
-                    else:
-                        a = median([ir_image[x-1][y], ir_image[x+1][y], ir_image[x][y-1], ir_image[x][y+1], ir_image[x][y], ir_image[x][y]])
-                    if abs(a-ir_image[x][y]) > 0.7:
-                        ir_image[x][y] = a
-                if chess == 0:
-                    chess = 1
-                else:
-                    chess = 0
-        else:
-            chess = 1
-            for x in range(0, 24):
-                for y in range(chess, 32, 2):
-                    if x == 0:
-                        if y == 31:
-                            a = median([ir_image[x][y-1], ir_image[x+1][y], ir_image[x][y]])
-                        else:
-                            a = median([ir_image[x][y-1], ir_image[x+1][y], ir_image[x][y+1], ir_image[x][y]])
-                    elif x == 23:
-                        if y == 0:
-                            a = median([ir_image[x-1][y], ir_image[x][y+1], ir_image[x][y]])
-                        else:
-                            a = median([ir_image[x][y-1], ir_image[x-1][y], ir_image[x][y+1], ir_image[x][y]])
-                    elif y == 0 and x%2 == 1:
-                        a = median([ir_image[x-1][y], ir_image[x+1][y], ir_image[x][y+1], ir_image[x][y]])
-                    elif y == 31 and x%2 == 0:
-                        a = median([ir_image[x][y-1], ir_image[x-1][y], ir_image[x+1][y], ir_image[x][y]])
-                    else:
-                        a = median([ir_image[x-1][y], ir_image[x+1][y], ir_image[x][y-1], ir_image[x][y+1], ir_image[x][y], ir_image[x][y]])
-                    if abs(a-ir_image[x][y]) > 0.7:
-                        ir_image[x][y] = a
-                if chess ==1:
-                    chess = 0
-                else:
-                    chess = 1
-        return ir_image
-
-    def iir_filter(ir_image, iir_ir_image, cnt, depth=8, threshold=2.5):
-        for x in range(0, 24):
-            for y in range(0, 32):
-                if abs(iir_ir_image[x][y] - ir_image[x][y]) >= threshold:
-                    iir_ir_image[x][y] = ir_image[x][y]
-                    cnt[x][y] = 1
-                else:
-                    if cnt[x][y] < depth:
-                        iir_ir_image[x][y] = (iir_ir_image[x][y] * cnt[x][y] + iir_ir_image[x][y]) / (cnt[x][y] + 1)
-                        cnt[x][y] = cnt[x][y] + 1
-                    else:
-                        iir_ir_image[x][y] = (ir_image[x][y] + iir_ir_image[x][y] * (depth - 1)) / depth
-        return iir_ir_image, cnt
-
-
+    def read_frame(self):
+        raw_frame = self.hw.read_frame()
+        frame = self.do_compensation(raw_frame)
+        return [int(100 * x) for x in frame]
+            
+    
 class ParameterCodesEEPROM(enum.Enum):
     CodeOscTrim = 1
     CodeAnalogTrim = 2
@@ -1160,13 +769,13 @@ class Mlx90640EEPROM:
         :returns: nothing
         :raises: ValueError - error during read from chip
         """
-        first_read, status = self.device.hw.i2c_read(self.device.i2c_addr, 0x2400, self.eeprom_size)
+        first_read, status = self.device.hw.i2c_read(0x2400, self.eeprom_size)
         if status != 0:
             raise ValueError("Error during initial read of eeprom")
         first_read = list(struct.unpack(">" + str(self.eeprom_size // 2) + "H", first_read))
 
         for m in range(2):
-            consecutive_read, status = self.device.hw.i2c_read(self.device.i2c_addr, 0x2400, self.eeprom_size)
+            consecutive_read, status = self.device.hw.i2c_read(0x2400, self.eeprom_size)
             if status != 0:
                 raise ValueError("Error during consecutive read of eeprom")
             consecutive_read = list(struct.unpack(">" + str(self.eeprom_size // 2) + "H", consecutive_read))
@@ -1227,201 +836,16 @@ class Mlx90640EEPROM:
             if pixel_i not in self.bad_pixels:
                 self.bad_pixels.append(pixel_i)
         return self.bad_pixels
-
-
-class Mlx90641EEPROM:
-    eeprom_map = {
-        ParameterCodesEEPROM.CodeOscTrim: 0,
-        ParameterCodesEEPROM.CodeAnalogTrim: 1,
-        ParameterCodesEEPROM.CodeConfiguration: 3,
-        ParameterCodesEEPROM.CodeI2CAddr: 0xF,  # (ChipV == ChipVersion90640AAA || ChipV == ChipVersion90641AAA)
-        ParameterCodesEEPROM.CodeAnalogTrim2: 4,  # (ChipV == ChipVersion90640AAA || ChipV == ChipVersion90641AAA)
-        ParameterCodesEEPROM.CodeCropPageAddr: 5,
-        ParameterCodesEEPROM.CodeCropCellAddr: 6,
-        ParameterCodesEEPROM.CodeID1: 7,
-        ParameterCodesEEPROM.CodeID2: 8,
-        ParameterCodesEEPROM.CodeID3: 9,
-        ParameterCodesEEPROM.CodeDeviceOptions: 10,
-        ParameterCodesEEPROM.CodeControl1: 0xC,
-        ParameterCodesEEPROM.CodeControl2: 0xD,
-        ParameterCodesEEPROM.CodeI2CConf: 0xE,
-        ParameterCodesEEPROM.CodeScale_occ_os: [0x10, 6, 6],
-        ParameterCodesEEPROM.CodePix_os_average: (0, 2, lambda index: [0x11 + index, 0, 11]),
-        ParameterCodesEEPROM.CodeKta_avg: [0x15, 0, 11],
-        ParameterCodesEEPROM.CodeKta_scale_2: [0x16, 0, 5],
-        ParameterCodesEEPROM.CodeKta_scale_1: [0x16, 5, 6],
-        ParameterCodesEEPROM.CodeKv_avg: [0x17, 0, 11],
-        ParameterCodesEEPROM.CodeKv_scale_2: [0x18, 0, 5],
-        ParameterCodesEEPROM.CodeKv_scale_1: [0x18, 5, 6],
-        ParameterCodesEEPROM.CodeScale_row: (0,6, lambda index: [0x19 + index // 2, abs((index%2)-1)*5, abs((index%2)-1)+5]),
-        ParameterCodesEEPROM.CodeRow_max: (0, 6, lambda index: [0x1C + index, 0, 11]),
-        ParameterCodesEEPROM.CodeKsTa: [0x22, 0, 11],
-        ParameterCodesEEPROM.CodeEmissivity: [0x23, 0, 11],
-        ParameterCodesEEPROM.CodeGAIN: (0, 2, lambda index: [0x24 + index, 0, 11]),
-        ParameterCodesEEPROM.CodeVdd_25: [0x26, 0, 11],
-        ParameterCodesEEPROM.CodeK_Vdd: [0x27, 0, 11],
-        ParameterCodesEEPROM.CodePTAT_25: (0, 2, lambda index: [0x28 + index, 0, 11]),
-        ParameterCodesEEPROM.CodeKt_PTAT: [0x2A, 0, 11],
-        ParameterCodesEEPROM.CodeKv_PTAT: [0x2B, 0, 11],
-        ParameterCodesEEPROM.CodeAlpha_PTAT: [0x2C, 0, 11],
-        ParameterCodesEEPROM.CodeAlpha_CP: [0x2D, 0, 11],
-        ParameterCodesEEPROM.CodeAlpha_CP_scale: [0x2E, 0, 11],
-        ParameterCodesEEPROM.CodeOffset_CP: (0, 2, lambda index: [0x2F + index, 0, 11]),
-        ParameterCodesEEPROM.CodeKta_CP: [0x31, 0, 6],
-        ParameterCodesEEPROM.CodeKta_CP_scale: [0x31, 6, 5],
-        ParameterCodesEEPROM.CodeKv_CP: [0x32, 0, 6],
-        ParameterCodesEEPROM.CodeKv_CP_scale: [0x32, 6, 5],
-        ParameterCodesEEPROM.CodeTGC: [0x33, 0, 9],
-        ParameterCodesEEPROM.CodeCalib_res_cont: [0x33, 9, 2],
-        ParameterCodesEEPROM.CodeKsTo_scale: [0x34, 0, 11],
-        ParameterCodesEEPROM.CodeKsTo_R1: [0x35, 0, 11],
-        ParameterCodesEEPROM.CodeKsTo_R2: [0x36, 0, 11],
-        ParameterCodesEEPROM.CodeKsTo_R3: [0x37, 0, 11],
-        ParameterCodesEEPROM.CodeKsTo_R4: [0x39, 0, 11],
-        #ParameterCodesEEPROM.CodeKsTo_R5: [0x39, 0, 11],
-        #ParameterCodesEEPROM.CodeCT6: [0x3A, 0, 11],
-        #ParameterCodesEEPROM.CodeKsTo_R6: [0x3B, 0, 11],
-        #ParameterCodesEEPROM.CodeCT7: [0x3C, 0, 11],
-        #ParameterCodesEEPROM.CodeKsTo_R7: [0x3D, 0, 11],
-        #ParameterCodesEEPROM.CodeCT8: [0x3E, 0, 11],
-        #ParameterCodesEEPROM.CodeKsTo_R8: [0x3F, 0, 11],
-        ParameterCodesEEPROM.CodePixel_Offset: (0, 16 * 12, lambda index: [0x40 + index, 0, 11]),
-        ParameterCodesEEPROM.CodePixel_Sensitivity: (0, 16 * 12, lambda index: [0x100 + index, 0, 11]),
-        ParameterCodesEEPROM.CodePixel_Kv: (0, 16 * 12, lambda index: [0x1C0 + index, 0, 5]),
-        ParameterCodesEEPROM.CodePixel_Kta: (0, 16 * 12, lambda index: [0x1C0 + index, 5, 6]),
-        ParameterCodesEEPROM.CodePixel_os: (0, 16 * 12, lambda index: [0x280 + index, 0, 11])
-    }
-
-    def __init__(self, device: MLX90640):
-        self.device = device
-        self.eeprom = None
-        self.eeprom_size = 0x680
-        self.bad_pixels = []
-
-    def get_bit(self, index, lsb):
-        return (self.eeprom[index] & (1 << lsb)) != 0
-
-    def get_bits(self, index, lsb, nbits):
-        return (self.eeprom[index] >> lsb) & ((1 << nbits) - 1)
-
-    def set_bits(self, index, data, lsb, nbits):
-        mask = (1 << nbits) - 1
-        self.eeprom[index] = (self.eeprom[index] & ~(mask << lsb)) | ((data & mask) << lsb)
-
-    def get_eeprom_id_version(self):
-        if (self.eeprom[0x09] == 0x100C and self.eeprom[0x0A] == 0x0020) or \
-                (self.eeprom[0x09] == 0 and self.eeprom[0x0A] == 0):
-            return 0
-        else:
-            return 1
-
-    def read_eeprom_from_device(self):
-        """
-        Perform consecutive reads of the EEPROM to ensure a correct read, sets self.eeprom as a list of 16 bit
-        integers read in big endian
-        :returns: nothing
-        :raises: ValueError - error during read from chip
-        """
-        first_read, status = self.device.i2c_read(0x2400, self.eeprom_size)
-        if status != 0:
-            raise ValueError("Error during initial read of eeprom")
-        first_read = list(struct.unpack(">" + str(self.eeprom_size // 2) + "H", first_read))
-
-        for m in range(2):
-            consecutive_read, status = self.device.i2c_read(0x2400, self.eeprom_size)
-            if status != 0:
-                raise ValueError("Error during consecutive read of eeprom")
-            consecutive_read = list(struct.unpack(">" + str(self.eeprom_size // 2) + "H", consecutive_read))
-
-            for i in range(self.eeprom_size // 2):
-                first_read[i] |= consecutive_read[i]
-        self.eeprom = first_read
-        self.get_bad_pixels()
-
-    def get_parameter_code(self, param_id: ParameterCodesEEPROM, index=None):
-        """
-        Gets a named parameter from the eeprom. If it is an indexed parameter the index will be checked.
-        :param ParameterCodesEEPROM param_id: the id of the parameter
-        :param int index: only needed for indexed parameters
-        :return: nothing
-        :raises: ValueError - missing eeprom (not read from device), or the eeprom parameter is not defined
-                 AttributeError - index not provided when needed
-                 IndexError - index is out of predefined range for parameter
-        """
-        if self.eeprom is None:
-            raise ValueError("EEPROM is not read from device")
-        params = Mlx90641EEPROM.eeprom_map[param_id]
-        if type(params) is int:
-            return self.eeprom[params]
-        elif type(params) is list:
-            return self.get_bits(*params)
-        elif type(params) is tuple:
-            if index is None:
-                raise AttributeError("For this parameter index can not be None")
-
-            if params[0] <= index < params[1]:
-                calculated_params = params[2](index)
-                return self.get_bits(*calculated_params)
-            else:
-                raise IndexError("index: {} out of range ({}, {})".format(index, params[0], params[1]))
-        else:
-            ValueError("invalid eeprom parameter at {}".format(param_id))
-
-    def get_bad_pixels(self):
-        self.bad_pixels = []
-        for pixel_i in range(192):
-            if self.eeprom[0x0040 + pixel_i] == 0:
-                if self.eeprom[0x0100 + pixel_i] == 0:
-                    if self.eeprom[0x01C0 + pixel_i] == 0:
-                        if self.eeprom[0x0680 + pixel_i] == 0:
-                            self.bad_pixels.append(pixel_i)
-
-        return self.bad_pixels
-
-
-def main():
-    # demo to test the file.. get a single frame from first comport found that has a EVB90640.
-    # Should you want a more user friendly example, please have a look at MLX90640_dump_frame.py example.
-
-    import time
-    # work-around for having the parent directory added to the search path of packages.
-    # to make `import mlx.pympt` to work, even EVB pip package itself is not installed!
-    # note: when installed, it will take the installed version!
-    # https://chrisyeh96.github.io/2017/08/08/definitive-guide-python-imports.html#case-2-syspath-could-change
-    import os
-    import sys
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-
-    if 10:
-      from mlx.hw_usb_evb90640 import HwUsbEvb90640
-      hw = HwUsbEvb90640()
-    else:
-      from mlx.hw_rpi_gpio_bitbang import HwRpiGpioBitBang
-      hw = HwRpiGpioBitBang()
-
-    # defaults
-    frame_rate = 2.0
-    max_frames = 10
-
-    dev = MLX90640(hw, frame_rate=frame_rate)
-    dev.init()
-
-    frame_count = 0
-    while frame_count < max_frames:
-        frame = None
-        try:
-            frame = dev.read_frame()
-        except Exception as e:
-            dev.clear_error(frame_rate)
-            print(e)
-            pass
-
-        if frame is not None:
-            frame = dev.do_compensation(frame)
-            print(",".join(map("{:6.2f}".format, frame)))
-            frame_count += 1
-        time.sleep(0.1)
-
-
-if __name__ == '__main__':
-    main()
+    
+    
+if __name__ == "__main__":
+    i2c_handle = SMBus(0)
+    mlx = MLX90640(i2c_handle, i2c_addr=0x33, frame_rate=8.0)
+    
+    while True:
+        
+        start_time = time.time()
+        frame = mlx.read_frame()
+        print(time.time() - start_time)
+        print(frame)
+        
