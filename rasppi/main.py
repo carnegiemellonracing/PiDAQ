@@ -1,6 +1,7 @@
 import os
 import random
 
+# Set DAQ_PI_ID from environment variable or generate a random ID
 DAQ_PI_ID = os.getenv("DAQ_PI_ID") or f"RPI-{random.randint(1000, 9999)}"
 os.environ["DAQ_PI_ID"] = DAQ_PI_ID
 
@@ -13,17 +14,17 @@ import csv_logger
 import threadingd
 import base64
 
+# Import logging utilities and helper functions
 from logger import log, log_to_file
 from utils import compute_average_temp
 import mqtt
 import mcp
 
-# toggle sensors
-DISCONNECT_TIMEOUT_SECONDS = 300
+# Constants
+DISCONNECT_TIMEOUT_SECONDS = 300  # Timeout for disconnecting sensors
 
-connected = False
+connected = False  # Global flag for connection status
 
-# Get Pi ID from environment or set randomly in test mode
 # Global sensor objects (initialized once in main())
 sensors = {}
 
@@ -36,7 +37,7 @@ parser.add_argument("-m", "--mlx", action="store_true", help="Enable MLX90640 se
 parser.add_argument("-v", "--vl", action="store_true", help="Enable VL53L0X sensor")
 parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
 
-
+# Parse arguments and set flags
 args = parser.parse_args()
 is_test_mode = args.test_mode
 adc_active = args.adc
@@ -44,11 +45,11 @@ mlx_active = args.mlx
 vl53l0x_active = args.vl
 debug_mode = args.debug
 
+# Enable logging to file if not in debug mode
 if not debug_mode:
     log_to_file("program.log")
 
-# Setting the client ID for this RPi
-
+# Validate DAQ_PI_ID and handle test mode
 if DAQ_PI_ID is None:
     if is_test_mode:
         log("WARNING: DAQ_PI_ID not set in environment. Using random value")
@@ -57,8 +58,7 @@ if DAQ_PI_ID is None:
         log("ERROR: DAQ_PI_ID not set in environment.")
         exit(1)
 
-# Conditionally importing libraries
-
+# Conditionally import libraries based on test mode
 if is_test_mode:
     log("Running in dry run test mode.")
 else:
@@ -69,8 +69,10 @@ else:
     from sensors.vl53l0x import init_vl53l0x, read_range
     from sensors.mlx90640 import init_mlx90640, read_frame
 
+# Class to manage the state of testing
 class TestingState:
     def __init__(self):
+        # Initialize testing state variables
         self.test_state = False
         self.test_time_stamp = None
         self.test_name = ""
@@ -84,6 +86,7 @@ class TestingState:
                 "WARNING: Raspberry Pi ID could not be read from system. Setting a random ID for testing purposes."
             )
 
+    # Getter and setter methods for test state and metadata
     def get_name(self):
         return self.test_name
 
@@ -100,30 +103,35 @@ class TestingState:
         return self.test_time_stamp
 
     def start_test(self, test_name, timestamp):
+        # Start a test and set relevant metadata
         self.test_name = test_name
         self.test_time_stamp = timestamp
         self.test_state = True
 
     def stop_test(self):
+        # Stop the test and reset metadata
         self.test_state = False
         self.test_name = ""
         self.test_timestamp = None
 
+# Instantiate the TestingState manager
 testStateManager = TestingState()
 
+# Function to handle incoming MQTT messages
 def handle_message(data):
     test_name = data["test_name"]
     if data["command"] == "start":
+        # Start a test and log the event
         testStateManager.start_test(test_name, datetime.datetime.now())
         data_logger.log_test_start(test_name, testStateManager.get_timestamp())
         log(f'Started test: "{test_name}"')
     elif data["command"] == "stop":
+        # Stop the test and log the event
         testStateManager.stop_test()
         log(f'Stopped test: "{test_name}"')
 
-# Thread to collect sensor data and place it in the MQTT queue.
+# Thread to collect sensor data and place it in the MQTT queue
 def read_sensors():
-
     last_full_frame = None
     while True:
         if not testStateManager.test_state:
@@ -135,19 +143,18 @@ def read_sensors():
 
         if not is_test_mode:
             # Collect real sensor data using pre-initialized sensors
-
-
             if mlx_active:
-                try :
+                try:
                     mlx = sensors.get("mlx")
-                    mlx_data_frame= read_frame(mlx)
+                    mlx_data_frame = read_frame(mlx)
 
-                    send_mqtt =not last_full_frame or  (time.time() - last_full_frame) > 1
-                    #data_logger.log_data(name="tire_temp_frame", value=mlx_data_frame, mqtt=send_mqtt)
+                    # Send data to MQTT at a controlled rate
+                    send_mqtt = not last_full_frame or (time.time() - last_full_frame) > 1
                     data_logger.log_data(name="tire_temp_frame", value=mlx_data_frame, mqtt=False)
                     if send_mqtt:
                         last_full_frame = time.time()
 
+                    # Compute and log average temperature
                     average_temp = compute_average_temp(mlx_data_frame)
                     data_logger.log_data(name="tire_temp_avg", value=average_temp)
                 except Exception as e:
@@ -165,18 +172,17 @@ def read_sensors():
                 try:
                     vl53 = sensors.get("vl53")
                     ride_height = read_range(vl53)
-                    data_logger.log_data(name="ride_height", value=ride_height, mqtt = False) #remove mqtt param to enable MQTT
+                    data_logger.log_data(name="ride_height", value=ride_height, mqtt=False)
                 except Exception as e:
                     log(f"Error reading VL53L0X: {e}")
 
         else:
+            # Generate random data in dry-run mode
             if mlx_active:
-                try :
-                    tire_temp_frame = []
-                    for i in range(24 * 32):
-                        tire_temp_frame.append(random.randint(1000, 9999))
-                    send_mqtt =not last_full_frame or  (time.time() - last_full_frame) > 1
-                    data_logger.log_data(name="tire_temp_frame", value=tire_temp_frame, mqtt=send_mqtt, )
+                try:
+                    tire_temp_frame = [random.randint(1000, 9999) for _ in range(24 * 32)]
+                    send_mqtt = not last_full_frame or (time.time() - last_full_frame) > 1
+                    data_logger.log_data(name="tire_temp_frame", value=tire_temp_frame, mqtt=send_mqtt)
                     average_temp = compute_average_temp(tire_temp_frame)
                     data_logger.log_data(name="tire_temp_avg", value=average_temp)
                 except Exception as e:
@@ -191,22 +197,17 @@ def read_sensors():
 
             if vl53l0x_active:
                 try:
-                    ride_height = random.randint(1,50)
+                    ride_height = random.randint(1, 50)
                     data_logger.log_data(name="ride_height", value=ride_height)
                 except Exception as e:
                     log(f"Error reading VL53L0X: {e}")
-            # Generate random data in dry-run mode
 
             time.sleep(0.4)
 
-        # log(f"Collected sensor data: {msg}")
         if not mlx_active:
             time.sleep(0.1)  # Adjust as needed for data rate
 
-        # except Exception as e:
-        # log(f"Error reading sensors: {e}")
-
-
+# Main function to initialize sensors and start threads
 def main():
     if not is_test_mode:
         # Initialize I2C buses and sensors once
@@ -228,10 +229,9 @@ def main():
     sensor_thread_instance = threading.Thread(target=read_sensors, daemon=True)
     sensor_thread_instance.start()
 
-    # Start mcp sending thread
-    mcp_thread_instance = threading.Thread(target = mcp.run_mcp, daemon=True)
+    # Start MCP thread
+    mcp_thread_instance = threading.Thread(target=mcp.run_mcp, daemon=True)
     mcp_thread_instance.start()
-
 
     # Keep the main thread alive to allow other threads to run
     try:
@@ -240,7 +240,6 @@ def main():
     except KeyboardInterrupt:
         log("Shutting down due to KeyboardInterrupt...")
         mqtt.disconnect()
-
 
 if __name__ == "__main__":
     main()

@@ -19,7 +19,7 @@ import time
 
 DAQ_PI_ID = int(os.getenv("DAQ_PI_ID"))
 
-MLX_CAN_ID = 0x660 + 16 * DAQ_PI_ID
+MLX_CAN_ID = 0x660 + 16 * DAQ_PI_ID # 16 bc we do 660 for pi0, 670 for pi1... (in hex, 16 apart)
 ADC_CAN_ID = 0x661 + 16 * DAQ_PI_ID
 VL_CAN_ID = 0x662 + 16 * DAQ_PI_ID
 
@@ -35,6 +35,11 @@ VL53L0X_ADDRESS = 0x29
 
 MAX11617_ADDRESS = 0x35
 MAX11617_CHANNEL_COUNT = 3
+
+TIME_1MS = 0.001
+SPI_MAX_SPEED_HZ = 100000
+MCP_CS_PIN = 5 # this is the chip select pin (designated by the chosen GPIO on PI)
+
 
 
 def i2c0_process(i2c_handle, avg_temp_value):
@@ -63,7 +68,7 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
                 
                 start_time = current_time
             else:
-                time.sleep(0.001)
+                time.sleep(TIME_1MS)
     
     def max11617_task(linpot_value, adc1_value, adc2_value):
         start_time = time.time()
@@ -74,7 +79,7 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
                 
                 start_time = current_time  
             else:
-                time.sleep(0.001)
+                time.sleep(TIME_1MS)
     
     vl530_thread = Thread(target=vl530_task, args=(distance_value, ))
     max11617_thread = Thread(target=max11617_task, args=(linpot_value, adc1_value, adc2_value, ))
@@ -85,7 +90,7 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
 
 def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value):
 
-    mcp = MCP2515(spi_handle, cs_pin=5)
+    mcp = MCP2515(spi_handle, cs_pin=MCP_CS_PIN)
     mcp.set_normal_mode()
 
     mcp_lock = Lock()
@@ -109,7 +114,7 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
                 
                 start_time = current_time  
             else:
-                time.sleep(0.001)
+                time.sleep(TIME_1MS)
 
     def vl530_task(mcp, distance_value):
         start_time = time.time()
@@ -123,7 +128,7 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
                 
                 start_time = current_time
             else:
-                time.sleep(0.001)
+                time.sleep(TIME_1MS)
 
     def mlx90640_task(mcp, avg_temp_value):
         start_time = time.time()    
@@ -137,7 +142,7 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
                 
                 start_time = current_time
             else:
-                time.sleep(0.001)
+                time.sleep(TIME_1MS)
 
     mlx90640_thread = Thread(target=mlx90640_task, args=(mcp, avg_temp_value, ))
     vl530_thread = Thread(target=vl530_task, args=(mcp, distance_value, ))
@@ -157,7 +162,7 @@ if __name__ == "__main__":
 
     spi_handle = spidev.SpiDev()
     spi_handle.open(0, 0)
-    spi_handle.max_speed_hz = 100000
+    spi_handle.max_speed_hz = SPI_MAX_SPEED_HZ
 
     avg_temp_value = Value("i", 0)
     distance_value = Value("i", 0)
