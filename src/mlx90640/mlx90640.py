@@ -473,6 +473,7 @@ class MLX90640:
         self.calc_params.KsTo = c_int8(l).value / ScaleKsTo
         # To_0_Alpha;            // default 0.0
 
+    # Returns average temperature in deci-celsius
     def read_frame(self):
         raw_frame = self.hw.read_frame()
         frame = self.do_compensation(raw_frame)
@@ -482,7 +483,7 @@ class MLX90640:
         for i in range(pixel_count):
             total_temperature += frame[i]
         
-        avg_temperature = total_temperature / pixel_count
+        avg_temperature = int(10.0 * (total_temperature / pixel_count))
         
         return avg_temperature, frame
 
