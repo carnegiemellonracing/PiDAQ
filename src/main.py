@@ -104,7 +104,7 @@ def log_process(ir_frame_update, ir_frame_array, test_id_value):
         while True:
             if (test_id_value.value >= 2 ** 15) and (file_handle is None):
                 time_min = datetime.now().strftime("%Y-%m-%d_%H:%M")
-                file_handle = open(f"{time_min}_{test_id_value.value}.log", "w")
+                file_handle = open(f"{time_min}_{test_id_value.value & 0x7FFF}.log", "w")
             elif (test_id_value.value < 2 ** 15) and (file_handle is not None):
                 file_handle.close()
                 file_handle = None
@@ -113,7 +113,7 @@ def log_process(ir_frame_update, ir_frame_array, test_id_value):
                 timestamp_str = datetime.now().strftime("%H:%M:%S.%f")
                 file_handle.write(timestamp_str + " ; ")
                 
-                file_handle.write(f"{test_id_value.value} ; ")
+                file_handle.write(f"{test_id_value.value & 0x7FFF} ; ")
                 
                 for value in ir_frame_array:
                     file_handle.write(f"{value},")
