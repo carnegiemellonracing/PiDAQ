@@ -5,9 +5,11 @@ from mlx90640.mlx90640 import MLX90640
 from vl530l0x.vl530lx import VL53L0X
 from mcp2515.mcp2515 import MCP2515
 
-from multiprocessing import Process, Queue, Value
+from multiprocessing import Process, Queue, Value, Array
 from smbus2 import SMBus
 from threading import Thread, Lock
+from datetime import datetime
+from random import randint
 
 import os
 
@@ -42,24 +44,29 @@ MCP_CS_PIN = 5 # this is the chip select pin (designated by the chosen GPIO on P
 
 
 
-def i2c0_process(i2c_handle, avg_temp_value):
-    # TODO: Wrap in try catch
+def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
     mlx = MLX90640(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
 
-    start_time = time.time()    
     while True:
-        current_time = time.time()
-        if current_time - start_time > MLX90640_TASK_PERIOD:
-            avg_temp_value.value, frame = mlx.read_frame()
+        avg_temp, frame = mlx.read_frame()
+
+        if avg_temp is not None:
+            avg_temp_value.value = avg_temp
             
-            start_time = current_time
-        
+            if ir_frame_update.value == 0:
+                ir_frame_update.value = 1
+            else:
+                ir_frame_update.value = 0
+            
+            for i, value in enumerate(frame):
+                ir_frame_array[i] = value
+
         
 def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_value):
     vl530 = VL53L0X(i2c_handle, VL53L0X_ADDRESS)
     max11617 = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)
     
-    def vl530_task(distance_value):
+    def vl530_task():
         start_time = time.time()
         while True:
             current_time = time.time()
@@ -70,7 +77,7 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
             else:
                 time.sleep(TIME_1MS)
     
-    def max11617_task(linpot_value, adc1_value, adc2_value):
+    def max11617_task():
         start_time = time.time()
         while True:
             current_time = time.time()
@@ -81,24 +88,63 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
             else:
                 time.sleep(TIME_1MS)
     
-    vl530_thread = Thread(target=vl530_task, args=(distance_value, ))
-    max11617_thread = Thread(target=max11617_task, args=(linpot_value, adc1_value, adc2_value, ))
+    vl530_thread = Thread(target=vl530_task)
+    max11617_thread = Thread(target=max11617_task)
     
     vl530_thread.start()
     max11617_thread.start()
 
 
-def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value):
+def log_process(ir_frame_update, ir_frame_array, test_id_value):
+    
+    def mlx90640_task():
+        file_handle = None
+        last_update_value = 0
+        
+        while True:
+            if (test_id_value.value >= 2 ** 15) and (file_handle is None):
+                time_min = datetime.now().strftime("%Y-%m-%d_%H:%M")
+                file_handle = open(f"{time_min}_{test_id_value.value}.log", "w")
+            elif (test_id_value.value < 2 ** 15) and (file_handle is not None):
+                file_handle.close()
+                file_handle = None
+            
+            if (file_handle is not None) and (ir_frame_update.value != last_update_value):
+                timestamp_str = datetime.now().strftime("%H:%M:%S.%f")
+                file_handle.write(timestamp_str + " ; ")
+                
+                file_handle.write(f"{test_id_value.value} ; ")
+                
+                for value in ir_frame_array:
+                    file_handle.write(f"{value},")
+                file_handle.write("\n")
+                                
+                last_update_value = ir_frame_update.value
+            else:
+                time.sleep(TIME_1MS)
+                    
+    mlx90640_thread = Thread(target=mlx90640_task)
+    
+    mlx90640_thread.start()
+
+
+def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value, test_id_value):
 
     mcp = MCP2515(spi_handle, cs_pin=MCP_CS_PIN)
-    mcp.set_normal_mode()
+    mcp.set_config_mode()
+    mcp.enable_filters(0, True) 
+    mcp.enable_filters(1, False)
+    mcp.set_acceptance_mask(0, 0x7FF)
+    mcp.set_acceptance_filter(0, 0x777) 
+    mcp.set_loopback_mode()  
+    # mcp.set_normal_mode()
 
     mcp_lock = Lock()
 
     def uint16_to_bytes(value):
         return [value & 0xFF, value >> 8]
 
-    def max11617_task(mcp, linpot_value, adc1_value, adc2_value):
+    def max11617_task():
         start_time = time.time()
         while True:
             current_time = time.time()
@@ -116,7 +162,7 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
             else:
                 time.sleep(TIME_1MS)
 
-    def vl530_task(mcp, distance_value):
+    def vl530_task():
         start_time = time.time()
         while True:
             current_time = time.time()
@@ -130,7 +176,7 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
             else:
                 time.sleep(TIME_1MS)
 
-    def mlx90640_task(mcp, avg_temp_value):
+    def mlx90640_task():
         start_time = time.time()    
         while True:
             current_time = time.time()
@@ -143,15 +189,48 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
                 start_time = current_time
             else:
                 time.sleep(TIME_1MS)
+                
+    def read_task():
+        while True:
+            with mcp_lock:
+                can_id, can_data = mcp.read_message(timeout=0)
+            
+            if can_id is not None:
+                print(f"Received: {can_id}, data: {can_data}")
+                if can_id == 0x777:
+                    test_id_value.value = (can_data[1] << 8) + can_data[0]
+            
+            time.sleep(TIME_1MS)
+            
+    def spoof_test_start():
+        last_id = 0
+        while True:
+            with mcp_lock:
+                if last_id == 0:
+                    test_id_high = randint(128, 255)
+                    test_id_low = randint(0, 255)
+                    mcp.send_message(can_id=0x777, data=[test_id_low, test_id_high])
+                    
+                    last_id = 1
+                else:
+                    mcp.send_message(can_id=0x777, data=[0, 0])
+                    last_id = 0
+                    
 
-    mlx90640_thread = Thread(target=mlx90640_task, args=(mcp, avg_temp_value, ))
-    vl530_thread = Thread(target=vl530_task, args=(mcp, distance_value, ))
-    max11617_thread = Thread(target=max11617_task, args=(mcp, linpot_value, adc1_value, adc2_value, ))
+            
+            time.sleep(5)
+
+    mlx90640_thread = Thread(target=mlx90640_task)
+    vl530_thread = Thread(target=vl530_task)
+    max11617_thread = Thread(target=max11617_task)
+    read_thread = Thread(target=read_task)
+    spoof_thread = Thread(target=spoof_test_start)
 
     mlx90640_thread.start()
     vl530_thread.start()
     max11617_thread.start()
-    
+    read_thread.start()
+    spoof_thread.start()   
 
 
 if __name__ == "__main__":
@@ -165,14 +244,23 @@ if __name__ == "__main__":
     spi_handle.max_speed_hz = SPI_MAX_SPEED_HZ
 
     avg_temp_value = Value("i", 0)
+    ir_frame_array = Array("i", 32 * 24)
+    ir_frame_update = Value("b", 0)
+    
     distance_value = Value("i", 0)
+    
     linpot_value = Value("i", 0)
     adc1_value = Value("i", 0)
     adc2_value = Value("i", 0)
+    
+    test_id_value = Value("i", 0)
 
-    i2c0_process = Process(target=i2c0_process, args=(i2c0_handle,avg_temp_value,))
-    i2c1_process = Process(target=i2c1_process, args=(i2c1_handle,distance_value, linpot_value, adc1_value, adc2_value,))
-    can_process = Process(target=can_process, args=(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value,))
+    i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp_value, ir_frame_update, ir_frame_array, ))
+    i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, distance_value, linpot_value, adc1_value, adc2_value,))
+    can_process = Process(target=can_process, args=(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value,test_id_value,))
+    log_process = Process(target=log_process, args=(ir_frame_update, ir_frame_array,test_id_value,))
+    
     i2c0_process.start()
     i2c1_process.start()
     can_process.start()
+    log_process.start()
