@@ -19,6 +19,7 @@ MODE_LOOPBACK = 0x40
 MODE_CONFIG = 0x80
 
 class MCP2515:
+       
     def __init__(self, spi_handle, cs_pin=5, retries=3, timeout=1.0):
         self.spi = spi_handle
         self.cs_pin = cs_pin
@@ -30,6 +31,25 @@ class MCP2515:
         GPIO.output(cs_pin, GPIO.HIGH)
         self.reset()
         self.configure_baud_rate()
+        
+        self.FILTER_MAP = {
+            0: 0x0,
+            1: 0x4,
+            2: 0x8,
+            3: 0x10,
+            4: 0x14,
+            5: 0x18
+        }
+        
+        self.MASK_MAP = {
+            0: 0x20, 
+            1: 0x24
+        }
+        
+        self.CTRL_MAP = {
+            0: 0x60,
+            1: 0x70
+        }
 
     def configure_baud_rate(self):
         # Set the baud rate to 250000 in configuration registers
@@ -102,6 +122,9 @@ class MCP2515:
 
     def set_loopback_mode(self):
         self.set_mode(MODE_LOOPBACK)
+        
+    def set_config_mode(self):
+        self.set_mode(MODE_CONFIG)
 
     def read_status(self):
         def _read_status():
@@ -148,11 +171,12 @@ class MCP2515:
                 # Abort the transmission if it's taking too long
                 # ABAT bit in CANCTRL register
                 self.bit_modify(0x0F, 0x10, 0x10)
-                raise RuntimeError("Transmission failed.")
+                return False
             time.sleep(0.01)  # Small delay to prevent busy-waiting
 
         # Clear TX interrupt flag
         self.bit_modify(0x2C, 0x1C, 0x00)  # Clear TXnIF flags
+        return True
 
     def read_message(self, timeout=1.0):
         start_time = time.time()
@@ -189,6 +213,29 @@ class MCP2515:
                         raise RuntimeError(
                             f"Failed to read CAN message: {e}") from e
             return None, None  # Return None if no message is received within timeout
+    
+    def set_acceptance_filter(self, filter_id, filter_value):
+        filter_high = self.FILTER_MAP[filter_id]
+        filter_low = filter_high + 1
+        
+        self.write_register(filter_high, filter_value >> 3)
+        self.write_register(filter_low, filter_value << 5)
+        
+    def set_acceptance_mask(self, mask_id, mask_value):
+        mask_high = self.MASK_MAP[mask_id]
+        mask_low = mask_high + 1
+        
+        self.write_register(mask_high, mask_value >> 3)
+        self.write_register(mask_low, mask_value << 5)
+        
+    def enable_filters(self, buffer_id, enable):
+        ctrl_register = self.CTRL_MAP[buffer_id]
+        
+        if enable:
+            self.write_register(ctrl_register, 0x00)
+        else:
+            self.write_register(ctrl_register, 0x60)
+            
 
     def shutdown(self):
         def _shutdown():
