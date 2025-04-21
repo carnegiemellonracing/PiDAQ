@@ -41,28 +41,25 @@ class HAL_MLX90640:
         # 3. clear new data available bit.
 
         # 1. wait until new data is available
-        new_data_available = False
-        sub_page = 0
-        while not new_data_available:
-            status_reg, status = self.i2c_read(0x8000, 2)
-            status_reg = struct.unpack(">H", status_reg[0:2])[0]
-            if status_reg & 0x0008:
-                new_data_available = True
-            sub_page = status_reg & 0x0001
 
-        # 2. read frame data
-        self.i2c_write( 0x8000, struct.pack("<H", 0x0030))
+        status_reg, status = self.i2c_read(0x8000, 2)
+        status_reg = struct.unpack(">H", status_reg[0:2])[0]
+        if status_reg & 0x0008:
+            # 2. read frame data
+            self.i2c_write( 0x8000, struct.pack("<H", 0x0030))
 
-        frame_data, status = self.i2c_read(0x0400, 832*2)  # 32 * 26 * 2
-        frame_data = list(struct.unpack(">832h", frame_data))
+            frame_data, status = self.i2c_read(0x0400, 832*2)  # 32 * 26 * 2
+            frame_data = list(struct.unpack(">832h", frame_data))
 
-        # 3. clear new data available bit.
-        self.i2c_write(0x8000, struct.pack("<H", status_reg & ~0x0008))
+            # 3. clear new data available bit.
+            self.i2c_write(0x8000, struct.pack("<H", status_reg & ~0x0008))
 
-        control_reg1, status = self.i2c_read(0x800D, 2)
-        control_reg1 = struct.unpack(">H", control_reg1[0:2])[0]
+            control_reg1, status = self.i2c_read(0x800D, 2)
+            control_reg1 = struct.unpack(">H", control_reg1[0:2])[0]
 
-        return frame_data + [control_reg1, status_reg]       
+            return frame_data + [control_reg1, status_reg]   
+        else:
+            return None    
         
     
 class MLX90640:
@@ -281,7 +278,8 @@ class MLX90640:
                     else:
                         To = To1
 
-            result_frame[i] = To
+            # Convert to deci-celsiuis
+            result_frame[i] = 10.0 * To
         if add_ambient_temperature:
             result_frame.append(Tamb)
         return result_frame
@@ -476,16 +474,20 @@ class MLX90640:
     # Returns average temperature in deci-celsius
     def read_frame(self):
         raw_frame = self.hw.read_frame()
-        frame = self.do_compensation(raw_frame)
         
-        pixel_count = 32 * 24
-        total_temperature = 0
-        for i in range(pixel_count):
-            total_temperature += frame[i]
+        if raw_frame:
+            frame = self.do_compensation(raw_frame)
+            
+            pixel_count = 32 * 24
+            total_temperature = 0
+            for i in range(pixel_count):
+                total_temperature += frame[i]
+            
+            avg_temperature = int(total_temperature / pixel_count)
         
-        avg_temperature = int(10.0 * (total_temperature / pixel_count))
-        
-        return avg_temperature, frame
+            return avg_temperature, map(int, frame)
+        else:
+            return None, None
 
             
     
@@ -855,7 +857,10 @@ if __name__ == "__main__":
     while True:
         
         start_time = time.time()
-        frame = mlx.read_frame()
-        print(time.time() - start_time)
-        print(frame)
+        
+        avg_temp, frame = mlx.read_frame()
+
+        if avg_temp is not None:
+            print(avg_temp)
+            print(list(frame))
         
