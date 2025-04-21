@@ -135,9 +135,8 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
     mcp.enable_filters(0, True) 
     mcp.enable_filters(1, False)
     mcp.set_acceptance_mask(0, 0x7FF)
-    mcp.set_acceptance_filter(0, 0x777) 
-    mcp.set_loopback_mode()  
-    # mcp.set_normal_mode()
+    mcp.set_acceptance_filter(0, 0x777)  
+    mcp.set_normal_mode()
 
     mcp_lock = Lock()
 
@@ -196,41 +195,21 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
                 can_id, can_data = mcp.read_message(timeout=0)
             
             if can_id is not None:
-                print(f"Received: {can_id}, data: {can_data}")
                 if can_id == 0x777:
                     test_id_value.value = (can_data[1] << 8) + can_data[0]
             
             time.sleep(TIME_1MS)
-            
-    def spoof_test_start():
-        last_id = 0
-        while True:
-            with mcp_lock:
-                if last_id == 0:
-                    test_id_high = randint(128, 255)
-                    test_id_low = randint(0, 255)
-                    mcp.send_message(can_id=0x777, data=[test_id_low, test_id_high])
-                    
-                    last_id = 1
-                else:
-                    mcp.send_message(can_id=0x777, data=[0, 0])
-                    last_id = 0
-                    
 
-            
-            time.sleep(5)
 
     mlx90640_thread = Thread(target=mlx90640_task)
     vl530_thread = Thread(target=vl530_task)
     max11617_thread = Thread(target=max11617_task)
     read_thread = Thread(target=read_task)
-    spoof_thread = Thread(target=spoof_test_start)
 
     mlx90640_thread.start()
     vl530_thread.start()
     max11617_thread.start()
-    read_thread.start()
-    spoof_thread.start()   
+    read_thread.start()   
 
 
 if __name__ == "__main__":
