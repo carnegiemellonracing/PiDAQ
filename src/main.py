@@ -22,7 +22,7 @@ from pathlib import Path
 
 
 if "DAQ_PI_ID" in os.environ:
-    DAQ_PI_ID = os.getenv("DAQ_PI_ID")
+    DAQ_PI_ID = int(os.getenv("DAQ_PI_ID"))
 else:
     DAQ_PI_ID = 4
 
