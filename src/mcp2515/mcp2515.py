@@ -171,48 +171,29 @@ class MCP2515:
                 # Abort the transmission if it's taking too long
                 # ABAT bit in CANCTRL register
                 self.bit_modify(0x0F, 0x10, 0x10)
-                return False
+                return False    
             time.sleep(0.01)  # Small delay to prevent busy-waiting
 
         # Clear TX interrupt flag
         self.bit_modify(0x2C, 0x1C, 0x00)  # Clear TXnIF flags
         return True
 
-    def read_message(self, timeout=1.0):
-        start_time = time.time()
-        if timeout == 0:
-            status = self.read_status()
-            if status & 0x01:  # Check if RX0IF is set
-                try:
-                    id_high = self.read_register(0x61)
-                    id_low = self.read_register(0x62)
-                    length = self.read_register(0x65) & 0x0F
-                    data = []
-                    for i in range(length):
-                        data.append(self.read_register(0x66 + i))
-                    self.bit_modify(0x2C, 0x01, 0x00)  # Clear RX0IF
-                    return (id_high << 3) | (id_low >> 5), data
-                except Exception as e:
-                    raise RuntimeError(
-                        f"Failed to read CAN message: {e}") from e
-            return None, None
-        else:
-            while time.time() - start_time < timeout:
-                status = self.read_status()
-                if status & 0x01:  # Check if RX0IF is set
-                    try:
-                        id_high = self.read_register(0x61)
-                        id_low = self.read_register(0x62)
-                        length = self.read_register(0x65) & 0x0F
-                        data = []
-                        for i in range(length):
-                            data.append(self.read_register(0x66 + i))
-                        self.bit_modify(0x2C, 0x01, 0x00)  # Clear RX0IF
-                        return (id_high << 3) | (id_low >> 5), data
-                    except Exception as e:
-                        raise RuntimeError(
-                            f"Failed to read CAN message: {e}") from e
-            return None, None  # Return None if no message is received within timeout
+    def read_message(self):
+        status = self.read_status()
+        if status & 0x01:  # Check if RX0IF is set
+            try:
+                id_high = self.read_register(0x61)
+                id_low = self.read_register(0x62)
+                length = self.read_register(0x65) & 0x0F
+                data = []
+                for i in range(length):
+                    data.append(self.read_register(0x66 + i))
+                self.bit_modify(0x2C, 0x01, 0x00)  # Clear RX0IF
+                return (id_high << 3) | (id_low >> 5), data, length
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to read CAN message: {e}") from e
+        return None, None, None
     
     def set_acceptance_filter(self, filter_id, filter_value):
         filter_high = self.FILTER_MAP[filter_id]
@@ -275,9 +256,9 @@ if __name__ == "__main__":
         while True:
             current_time = time.time()
             if current_time - start_time > READ_PERIOD:
-                read_can_id, read_can_data = mcp.read_message(timeout=0)
+                read_can_id, read_can_data, read_can_dlc = mcp.read_message(timeout=0)
                 if read_can_id is not None:
-                    print(read_can_id, read_can_data)
+                    print(read_can_id, read_can_data, read_can_dlc)
 
                 start_time = current_time
             else:
