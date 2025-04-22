@@ -256,7 +256,7 @@ if __name__ == "__main__":
         while True:
             current_time = time.time()
             if current_time - start_time > READ_PERIOD:
-                read_can_id, read_can_data, read_can_dlc = mcp.read_message(timeout=0)
+                read_can_id, read_can_data, read_can_dlc = mcp.read_message()
                 if read_can_id is not None:
                     print(read_can_id, read_can_data, read_can_dlc)
 

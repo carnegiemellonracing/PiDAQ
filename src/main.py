@@ -233,7 +233,7 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
     def read_task():
         while True:
             with mcp_lock:
-                can_id, can_data, can_length = mcp.read_message(timeout=0)
+                can_id, can_data, can_length = mcp.read_message()
             
             if can_id is not None:
                 if can_id == 0x777 and can_length == 2:
