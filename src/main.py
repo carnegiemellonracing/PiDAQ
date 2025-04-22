@@ -13,11 +13,12 @@ from random import randint
 
 import os
 
-
 import busio
 import board
 
 import time
+
+from pathlib import Path
 
 
 if "DAQ_PI_ID" in os.environ:
@@ -46,6 +47,7 @@ TIME_1MS = 0.001
 SPI_MAX_SPEED_HZ = 100000
 MCP_CS_PIN = 5 # this is the chip select pin (designated by the chosen GPIO on PI)
 
+LOG_DIRECTORY = str(Path(__file__).parent.absolute()) + "/../log/"
 
 
 def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
@@ -130,6 +132,8 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
 
 def log_process(ir_frame_update, ir_frame_array, test_id_value):
     
+    os.makedirs(LOG_DIRECTORY, exist_ok=True)
+
     file_handle = None
     current_test_id = 0
     last_update_value = 0
@@ -154,7 +158,7 @@ def log_process(ir_frame_update, ir_frame_array, test_id_value):
             
             if test_active:
                 time_in_min = datetime.now().strftime("%Y-%m-%d_%H:%M")
-                file_handle = open(f"{time_in_min}_{test_id}.log", "w")
+                file_handle = open(f"{LOG_DIRECTORY}/{time_in_min}_{test_id}.log", "w")
         
         if test_active:
             # Log MLX90640 data
