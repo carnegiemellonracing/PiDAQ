@@ -19,7 +19,11 @@ import board
 
 import time
 
-DAQ_PI_ID = int(os.getenv("DAQ_PI_ID"))
+
+if "DAQ_PI_ID" in os.getenv:
+    DAQ_PI_ID = os.getenv("DAQ_PI_ID")
+else:
+    DAQ_PI_ID = 4
 
 MLX_CAN_ID = 0x660 + 16 * DAQ_PI_ID # 16 bc we do 660 for pi0, 670 for pi1... (in hex, 16 apart)
 ADC_CAN_ID = 0x661 + 16 * DAQ_PI_ID
