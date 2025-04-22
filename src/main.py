@@ -45,26 +45,52 @@ MCP_CS_PIN = 5 # this is the chip select pin (designated by the chosen GPIO on P
 
 
 def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
-    mlx = MLX90640(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
+    
+    mlx_enabled = False
+    
+    try:    
+        mlx = MLX90640(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
+        mlx_enabled = True
+    except Exception as e:
+        print("MLX not detected")
 
-    while True:
-        avg_temp, frame = mlx.read_frame()
+    def mlx90640_task():
+        while True:
+            avg_temp, frame = mlx.read_frame()
 
-        if avg_temp is not None:
-            avg_temp_value.value = avg_temp
-            
-            if ir_frame_update.value == 0:
-                ir_frame_update.value = 1
-            else:
-                ir_frame_update.value = 0
-            
-            for i, value in enumerate(frame):
-                ir_frame_array[i] = value
+            if avg_temp is not None:
+                avg_temp_value.value = avg_temp
+                
+                if ir_frame_update.value == 0:
+                    ir_frame_update.value = 1
+                else:
+                    ir_frame_update.value = 0
+                
+                for i, value in enumerate(frame):
+                    ir_frame_array[i] = value
+                    
+    mlx90640_thread = Thread(target=mlx90640_task)
+    
+    if mlx_enabled:
+        mlx90640_thread.start()
 
         
 def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_value):
-    vl530 = VL53L0X(i2c_handle, VL53L0X_ADDRESS)
-    max11617 = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)
+    
+    vl530_enabled = False
+    max11617_enabled = False
+    
+    try:
+        vl530 = VL53L0X(i2c_handle, VL53L0X_ADDRESS)
+        vl530_enabled = True
+    except Exception as e:
+        print("VL530 not detected")
+        
+    try:
+        max11617 = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)
+        max11617_enabled = True
+    except Exception as e:
+        print("MAX11617 not detected")
     
     def vl530_task():
         start_time = time.time()
@@ -91,25 +117,44 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
     vl530_thread = Thread(target=vl530_task)
     max11617_thread = Thread(target=max11617_task)
     
-    vl530_thread.start()
-    max11617_thread.start()
+    if vl530_enabled:
+        vl530_thread.start()
+        
+    if max11617_enabled:
+        max11617_thread.start()
 
 
 def log_process(ir_frame_update, ir_frame_array, test_id_value):
     
-    def mlx90640_task():
-        file_handle = None
-        last_update_value = 0
-        
-        while True:
-            if (test_id_value.value >= 2 ** 15) and (file_handle is None):
-                time_min = datetime.now().strftime("%Y-%m-%d_%H:%M")
-                file_handle = open(f"{time_min}_{test_id_value.value & 0x7FFF}.log", "w")
-            elif (test_id_value.value < 2 ** 15) and (file_handle is not None):
+    file_handle = None
+    current_test_id = 0
+    last_update_value = 0
+   
+    def _test_active(test_id):
+        return test_id >= 2 ** 15 
+    
+    def _extract_id(test_id):
+        return test_id & 0x7FFF
+    
+    while True:
+       # Check active
+        test_active = _test_active(test_id_value.value)
+        test_id = _extract_id(test_id_value.value)
+
+        # Generate file handles        
+        if test_id != current_test_id:
+            current_test_id = test_id
+            if file_handle is not None:
                 file_handle.close()
-                file_handle = None
+            file_handle = None
             
-            if (file_handle is not None) and (ir_frame_update.value != last_update_value):
+            if test_active:
+                time_in_min = datetime.now().strftime("%Y-%m-%d_%H:%M")
+                file_handle = open(f"{time_in_min}_{test_id}.log", "w")
+        
+        if test_active:
+            # Log MLX90640 data
+            if (ir_frame_update.value != last_update_value):
                 timestamp_str = datetime.now().strftime("%H:%M:%S.%f")
                 file_handle.write(timestamp_str + " ; ")
                 
@@ -120,13 +165,9 @@ def log_process(ir_frame_update, ir_frame_array, test_id_value):
                 file_handle.write("\n")
                                 
                 last_update_value = ir_frame_update.value
-            else:
-                time.sleep(TIME_1MS)
-                    
-    mlx90640_thread = Thread(target=mlx90640_task)
+        
+        time.sleep(TIME_1MS)
     
-    mlx90640_thread.start()
-
 
 def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value, test_id_value):
 
@@ -192,10 +233,10 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
     def read_task():
         while True:
             with mcp_lock:
-                can_id, can_data = mcp.read_message(timeout=0)
+                can_id, can_data, can_length = mcp.read_message(timeout=0)
             
             if can_id is not None:
-                if can_id == 0x777:
+                if can_id == 0x777 and can_length == 2:
                     test_id_value.value = (can_data[1] << 8) + can_data[0]
             
             time.sleep(TIME_1MS)
