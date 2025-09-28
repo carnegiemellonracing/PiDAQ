@@ -4,6 +4,7 @@ from max11617.max11617 import MAX11617
 from mlx90640.mlx90640 import MLX90640
 from vl530l0x.vl530lx import VL53L0X
 from mcp2515.mcp2515 import MCP2515
+from ms4525do.ms4535do import read_raw, convert_pressure
 
 from multiprocessing import Process, Queue, Value, Array
 from smbus2 import SMBus
@@ -87,7 +88,7 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
     max11617_enabled = False
     
     try:
-        vl530 = VL53L0X(i2c_handle, VL53L0X_ADDRESS)
+        vl530 = VL53L0X(i2c_handle, 0x28) #changed this
         vl530_enabled = True
     except Exception as e:
         print("VL530 not detected")
@@ -103,7 +104,9 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
         while True:
             current_time = time.time()
             if current_time - start_time > VL530_TASK_PERIOD:
-                distance_value.value = vl530.read_distance()
+                r = read_raw()
+                p = convert_pressure(r)
+                distance_value.value = p
                 
                 start_time = current_time
             else:
