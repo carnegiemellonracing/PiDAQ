@@ -106,6 +106,7 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
             if current_time - start_time > VL530_TASK_PERIOD:
                 r = read_raw()
                 p = convert_pressure(r)
+                print("pressure:", p)
                 distance_value.value = p
                 
                 start_time = current_time
