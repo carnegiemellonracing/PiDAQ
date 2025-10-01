@@ -83,55 +83,50 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
 
         
 def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_value):
-    
-    vl530_enabled = False
     max11617_enabled = False
-    
+    ms4535do_enabled = False
+
     try:
-        vl530 = VL53L0X(i2c_handle, 0x28) #changed this
-        vl530_enabled = True
+        # Just test read once at startup
+        _ = read_raw()
+        ms4535do_enabled = True
     except Exception as e:
-        print("VL530 not detected")
-        
+        print("MS4535DO not detected:", e)
+
     try:
         max11617 = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)
         max11617_enabled = True
     except Exception as e:
-        print("MAX11617 not detected")
-    
-    def vl530_task():
+        print("MAX11617 not detected:", e)
+
+    def ms4535do_task():
         start_time = time.time()
         while True:
             current_time = time.time()
-            if current_time - start_time > VL530_TASK_PERIOD:
+            if current_time - start_time > VL530_TASK_PERIOD:  # reuse that 50ms period
                 r = read_raw()
                 p = convert_pressure(r)
-                print("pressure:", p)
-                distance_value.value = p
-                
+                distance_value.value = int(p * 1000)  # or scale appropriately
+                # maybe print for debug
+                print("Pressure:", p, "psi")
                 start_time = current_time
             else:
                 time.sleep(TIME_1MS)
-    
+
     def max11617_task():
         start_time = time.time()
         while True:
             current_time = time.time()
             if current_time - start_time > MAX11617_TASK_PERIOD: 
                 linpot_value.value, adc1_value.value, adc2_value.value = max11617.read_adc()
-                
                 start_time = current_time  
             else:
                 time.sleep(TIME_1MS)
-    
-    vl530_thread = Thread(target=vl530_task)
-    max11617_thread = Thread(target=max11617_task)
-    
-    if vl530_enabled:
-        vl530_thread.start()
-        
+
+    if ms4535do_enabled:
+        Thread(target=ms4535do_task).start()
     if max11617_enabled:
-        max11617_thread.start()
+        Thread(target=max11617_task).start()
 
 
 def log_process(ir_frame_update, ir_frame_array, test_id_value):
