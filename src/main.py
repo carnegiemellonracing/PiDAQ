@@ -50,6 +50,87 @@ MCP_CS_PIN = 5 # this is the chip select pin (designated by the chosen GPIO on P
 LOG_DIRECTORY = str(Path(__file__).parent.absolute()) + "/../log/"
 
 
+class KalmanCV:
+	"""
+	State vector: [position, velocity]. Measurement: position only.
+	Tuning parameters:
+	- measurement_variance (R): variance of VL53L0X measurement noise [mm^2]
+	- acceleration_variance (sigma_a2): variance of white acceleration [mm^2/s^4]
+	"""
+
+	def __init__(self,
+				 initial_position: float,
+				 initial_velocity: float,
+				 measurement_variance: float,
+				 acceleration_variance: float,
+				 initial_position_variance: float = 1e6,
+				 initial_velocity_variance: float = 1e6) -> None:
+		# State estimates
+		self.x = float(initial_position)
+		self.v = float(initial_velocity)
+		# Covariance matrix P elements
+		self.P11 = float(initial_position_variance)
+		self.P12 = 0.0
+		self.P21 = 0.0
+		self.P22 = float(initial_velocity_variance)
+		# Noise parameters
+		self.R = float(measurement_variance)
+		self.sigma_a2 = float(acceleration_variance)
+
+	def predict(self, dt: float) -> None:
+		"""Time update with variable dt. O(1)."""
+		# State transition: x <- x + v*dt; v unchanged under constant-velocity
+		self.x = self.x + self.v * dt
+		# P <- F P F^T + Q(dt), where F = [[1, dt], [0, 1]]
+		P11 = self.P11
+		P12 = self.P12
+		P21 = self.P21
+		P22 = self.P22
+		# F P
+		FP11 = P11 + dt * P21
+		FP12 = P12 + dt * P22
+		FP21 = P21
+		FP22 = P22
+		# (F P) F^T
+		P11_new = FP11 + dt * FP12
+		P12_new = FP12
+		P21_new = FP21 + dt * FP22
+		P22_new = FP22
+		# Process noise for constant acceleration model
+		dt2 = dt * dt
+		dt3 = dt2 * dt
+		dt4 = dt2 * dt2
+		q11 = 0.25 * dt4 * self.sigma_a2
+		q12 = 0.5 * dt3 * self.sigma_a2
+		q22 = dt2 * self.sigma_a2
+		self.P11 = P11_new + q11
+		self.P12 = P12_new + q12
+		self.P21 = P21_new + q12
+		self.P22 = P22_new + q22
+
+	def update(self, z: float) -> None:
+		"""Measurement update using position-only measurement. O(1)."""
+		# Innovation
+		y = float(z) - self.x
+		# Residual covariance S = H P H^T + R = P11 + R
+		S = self.P11 + self.R
+		# Kalman gain K = P H^T S^{-1} -> [P11/S, P21/S]^T
+		K1 = self.P11 / S
+		K2 = self.P21 / S
+		# State update
+		self.x = self.x + K1 * y
+		self.v = self.v + K2 * y
+		# Covariance update: P <- (I - K H) P, with H = [1, 0]
+		P11_old = self.P11
+		P12_old = self.P12
+		P21_old = self.P21
+		P22_old = self.P22
+		self.P11 = (1.0 - K1) * P11_old
+		self.P12 = (1.0 - K1) * P12_old
+		self.P21 = P21_old - K2 * P11_old
+		self.P22 = P22_old - K2 * P12_old
+
+
 def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
     
     mlx_enabled = False
@@ -99,12 +180,32 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
         print("MAX11617 not detected")
     
     def vl530_task():
-        start_time = time.time()
+        # Initialize filter using a first measurement
+        last_t = time.time()
+        first_distance = vl530.read_distance()
+        # Tuning: R ~ measurement noise variance (mm^2), sigma_a2 ~ white accel variance (mm^2/s^4)
+        kf = KalmanCV(
+            initial_position=first_distance,
+            initial_velocity=0.0,
+            measurement_variance=400.0,
+            acceleration_variance=2500.0,
+            initial_position_variance=1e4,
+            initial_velocity_variance=1e4,
+        )
+        distance_value.value = int(first_distance)
+
+        start_time = last_t
         while True:
             current_time = time.time()
             if current_time - start_time > VL530_TASK_PERIOD:
-                distance_value.value = vl530.read_distance()
-                
+                dt = max(0.0, current_time - last_t)
+                last_t = current_time
+
+                kf.predict(dt)  # O(1)
+                z = vl530.read_distance()
+                kf.update(z)    # O(1)
+                distance_value.value = int(kf.x)
+
                 start_time = current_time
             else:
                 time.sleep(TIME_1MS)
