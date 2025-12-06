@@ -1,15 +1,22 @@
-import spidev
+# REMOVE - No longer using SPI for CAN
+import spidev  # <-- REMOVE THIS
 
-from max11617.max11617 import MAX11617
+# REPLACE - Change to AD7991 driver
+from max11617.max11617 import MAX11617  # <-- REPLACE with: from ad7991.ad7991 import AD7991
 from mlx90640.mlx90640 import MLX90640
-from vl530l0x.vl530lx import VL53L0X
-from mcp2515.mcp2515 import MCP2515
+# REPLACE - Change to new UART ride height sensors (UC5B20402 and OPS243-A)
+from vl530l0x.vl530lx import VL53L0X  # <-- REMOVE THIS (VL53L0X no longer used)
+# REMOVE - CAN controller no longer used
+from mcp2515.mcp2515 import MCP2515  # <-- REMOVE THIS
 
 from multiprocessing import Process, Queue, Value, Array
 from smbus2 import SMBus
-from threading import Thread, Lock
+from threading import Thread, Lock  # <-- Lock can be removed after CAN is deleted
 from datetime import datetime
 from random import randint
+
+# UNCOMMENT - Use utility functions from utils.py
+#from Utils.utils import uint16_to_bytes, bytes_to_uint16, test_id_is_active, extract_test_id  # <-- UNCOMMENT THIS
 
 import os
 
@@ -26,26 +33,32 @@ if "DAQ_PI_ID" in os.environ:
 else:
     DAQ_PI_ID = 4
 
-MLX_CAN_ID = 0x660 + 16 * DAQ_PI_ID # 16 bc we do 660 for pi0, 670 for pi1... (in hex, 16 apart)
-ADC_CAN_ID = 0x661 + 16 * DAQ_PI_ID
-VL_CAN_ID = 0x662 + 16 * DAQ_PI_ID
+# REMOVE - CAN ID definitions no longer needed
+MLX_CAN_ID = 0x660 + 16 * DAQ_PI_ID  # <-- REMOVE (was for CAN transmission)
+ADC_CAN_ID = 0x661 + 16 * DAQ_PI_ID  # <-- REMOVE (was for CAN transmission)
+VL_CAN_ID = 0x662 + 16 * DAQ_PI_ID   # <-- REMOVE (was for CAN transmission)
 
 MLX90640_TASK_PERIOD = 0.125
 
-VL530_TASK_PERIOD = 0.05
-MAX11617_TASK_PERIOD = 0.005
+# REMOVE - VL530 no longer used
+VL530_TASK_PERIOD = 0.05  # <-- REMOVE THIS
+# UPDATE - Change to AD7991_TASK_PERIOD (and may need different timing)
+MAX11617_TASK_PERIOD = 0.005  # <-- RENAME to AD7991_TASK_PERIOD
 
 MLX90640_ADDRESS = 0x33
 MLX90640_FRAME_RATE = 8.0
 
-VL53L0X_ADDRESS = 0x29
+# REMOVE - VL53L0X no longer used
+VL53L0X_ADDRESS = 0x29  # <-- REMOVE THIS
 
-MAX11617_ADDRESS = 0x35
-MAX11617_CHANNEL_COUNT = 3
+# UPDATE - Change to AD7991 address and channel count
+MAX11617_ADDRESS = 0x35  # <-- UPDATE to AD7991_ADDRESS (check datasheet for correct address)
+MAX11617_CHANNEL_COUNT = 3  # <-- UPDATE to AD7991_CHANNEL_COUNT = 4
 
 TIME_1MS = 0.001
-SPI_MAX_SPEED_HZ = 100000
-MCP_CS_PIN = 5 # this is the chip select pin (designated by the chosen GPIO on PI)
+# REMOVE - SPI settings no longer needed
+SPI_MAX_SPEED_HZ = 100000  # <-- REMOVE THIS
+MCP_CS_PIN = 5  # <-- REMOVE THIS
 
 LOG_DIRECTORY = str(Path(__file__).parent.absolute()) + "/../log/"
 
@@ -81,23 +94,33 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
         mlx90640_thread.start()
 
         
+# NEEDS MAJOR UPDATES - Replace VL53L0X and MAX11617 with new sensors (ASK JASMINE FOR CLARIFICATION)
+# CHANGES TO BE MADE 
+# - Add MLX tire sensor to this i2c
+# - Add new ADC to this i2c
 def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_value):
     
-    vl530_enabled = False
-    max11617_enabled = False
+    # REMOVE - VL530 no longer used (replaced by UC5B20402 and OPS243-A on UART)
+    vl530_enabled = False  # <-- REMOVE THIS SECTION
+    max11617_enabled = False  # <-- RENAME to ad7991_enabled
     
+    # REMOVE ENTIRE TRY/EXCEPT BLOCK - VL530 no longer used
     try:
         vl530 = VL53L0X(i2c_handle, VL53L0X_ADDRESS)
         vl530_enabled = True
     except Exception as e:
         print("VL530 not detected")
+    # <-- END REMOVE
         
+    # UPDATE - Replace with AD7991 initialization
     try:
-        max11617 = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)
-        max11617_enabled = True
+        max11617 = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)  # <-- REPLACE with AD7991
+        max11617_enabled = True  # <-- RENAME to ad7991_enabled
     except Exception as e:
-        print("MAX11617 not detected")
+        print("MAX11617 not detected")  # <-- UPDATE message to "AD7991 not detected"
     
+    #------------------------------------------------#
+    # REMOVE ENTIRE FUNCTION - VL530 replaced by UART sensors
     def vl530_task():
         start_time = time.time()
         while True:
@@ -108,28 +131,38 @@ def i2c1_process(i2c_handle, distance_value, linpot_value, adc1_value, adc2_valu
                 start_time = current_time
             else:
                 time.sleep(TIME_1MS)
+    #------------------------------------------------#
     
-    def max11617_task():
+    #------------------------------------------------#
+    # UPDATE - Modify for AD7991 (4 channels instead of 3)
+    def max11617_task():  # <-- RENAME to ad7991_task
         start_time = time.time()
         while True:
             current_time = time.time()
-            if current_time - start_time > MAX11617_TASK_PERIOD: 
-                linpot_value.value, adc1_value.value, adc2_value.value = max11617.read_adc()
+            if current_time - start_time > MAX11617_TASK_PERIOD:  # <-- UPDATE to AD7991_TASK_PERIOD
+                linpot_value.value, adc1_value.value, adc2_value.value = max11617.read_adc()  # <-- ADD adc3_value.value
                 
                 start_time = current_time  
             else:
                 time.sleep(TIME_1MS)
+    #------------------------------------------------#
     
-    vl530_thread = Thread(target=vl530_task)
-    max11617_thread = Thread(target=max11617_task)
+    # REMOVE - vl530_thread no longer needed
+    vl530_thread = Thread(target=vl530_task)  # <-- REMOVE THIS
+    max11617_thread = Thread(target=max11617_task)  # <-- RENAME to ad7991_thread
     
-    if vl530_enabled:
+    # REMOVE - vl530 thread start
+    if vl530_enabled:  # <-- REMOVE THIS ENTIRE IF BLOCK
         vl530_thread.start()
         
-    if max11617_enabled:
-        max11617_thread.start()
+    if max11617_enabled:  # <-- RENAME to ad7991_enabled
+        max11617_thread.start()  # <-- RENAME to ad7991_thread.start()
 
-
+#Added utility functions to a different file to clean up a bit, just need to replace them in here
+#_test_active(test_id) -> test_id_is_active(test_id)
+#_extract_id(test_id) -> extract_test_id(test_id)
+# NEEDS UPDATES - Should log ALL sensor data, not just IR frames
+# To Dos: Add parameters for all sensor values: distance, linpot, adc1, adc2, adc3, ride_height, doppler, etc.
 def log_process(ir_frame_update, ir_frame_array, test_id_value):
     
     os.makedirs(LOG_DIRECTORY, exist_ok=True)
@@ -138,10 +171,11 @@ def log_process(ir_frame_update, ir_frame_array, test_id_value):
     current_test_id = 0
     last_update_value = 0
    
-    def _test_active(test_id):
+    # REPLACE - Use utility functions from utils.py instead
+    def _test_active(test_id):  # <-- REPLACE with: from Utils.utils import test_id_is_active
         return test_id >= 2 ** 15 
     
-    def _extract_id(test_id):
+    def _extract_id(test_id):  # <-- REPLACE with: from Utils.utils import extract_test_id
         return test_id & 0x7FFF
     
     while True:
@@ -176,7 +210,15 @@ def log_process(ir_frame_update, ir_frame_array, test_id_value):
         
         time.sleep(TIME_1MS)
     
-
+#COMPLETELY REMOVE THIS ENTIRE FUNCTION (Lines 189-271)
+#---------------------------------------------------------------#
+# The can_process function is no longer needed because:
+# 1. CAN bus communication has been removed from hardware
+# 2. Data logging is handled by log_process (just needs expansion)
+# 3. uint16_to_bytes conversion moved to Utils/utils.py
+# 4. test_id is no longer received from CAN (need alternative method)
+#
+# DELETE EVERYTHING FROM HERE...
 def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value, test_id_value):
 
     mcp = MCP2515(spi_handle, cs_pin=MCP_CS_PIN)
@@ -259,6 +301,8 @@ def can_process(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_v
     vl530_thread.start()
     max11617_thread.start()
     read_thread.start()   
+# ...TO HERE (End of can_process deletion)
+#---------------------------------------------------------------#
 
 
 if __name__ == "__main__":
@@ -267,7 +311,8 @@ if __name__ == "__main__":
 
     i2c1_handle = busio.I2C(board.SCL, board.SDA)
 
-    spi_handle = spidev.SpiDev()
+    # REMOVE - SPI no longer used (CAN removed)
+    spi_handle = spidev.SpiDev()  # <-- REMOVE THESE 3 LINES
     spi_handle.open(0, 0)
     spi_handle.max_speed_hz = SPI_MAX_SPEED_HZ
 
@@ -275,20 +320,30 @@ if __name__ == "__main__":
     ir_frame_array = Array("i", 32 * 24)
     ir_frame_update = Value("b", 0)
     
-    distance_value = Value("i", 0)
+    # UPDATE - distance_value may no longer be needed (VL530 removed, replaced by UART sensors)
+    distance_value = Value("i", 0)  # <-- MAY NEED TO REPLACE with ride_height_value and doppler_value
     
     linpot_value = Value("i", 0)
     adc1_value = Value("i", 0)
     adc2_value = Value("i", 0)
+    # ADD - Need adc3_value for 4th ADC channel
+    # adc3_value = Value("i", 0)  # <-- ADD THIS
     
-    test_id_value = Value("i", 0)
+    # UPDATE - test_id_value was received from CAN (0x777), need alternative method to set this
+    test_id_value = Value("i", 0)  # <-- Need new way to control test_id (button? config file? network?)
 
     i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp_value, ir_frame_update, ir_frame_array, ))
+    # UPDATE - i2c1_process needs adc3_value added to args, and distance_value may be removed
     i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, distance_value, linpot_value, adc1_value, adc2_value,))
-    can_process = Process(target=can_process, args=(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value,test_id_value,))
+
+    #REMOVE THIS!
+    can_process = Process(target=can_process, args=(spi_handle, avg_temp_value, distance_value, linpot_value, adc1_value, adc2_value,test_id_value,))  # <-- DELETE THIS LINE
+    #REMOVE THIS!
+
+    # UPDATE - log_process needs expanded args to log ALL sensor data
     log_process = Process(target=log_process, args=(ir_frame_update, ir_frame_array,test_id_value,))
     
     i2c0_process.start()
     i2c1_process.start()
-    can_process.start()
+    can_process.start()  # <-- REMOVE THIS LINE
     log_process.start()
