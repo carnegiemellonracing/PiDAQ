@@ -121,29 +121,33 @@ def uart_process(ride_height_value, doppler_value):
 
 def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                  linpot_value, adc1_value, adc2_value, adc3_value):
-    """
-    I2C1 Process - Handles both MLX90640 IR camera and AD7991 ADC
-    - MLX90640: IR thermal camera (32x24 pixels, 8 Hz)
-    - AD7991: 4-channel 12-bit ADC (CH0=Linpot, CH1-3=Analog inputs)
-    """
+    # I2C1 Process - Handles both MLX90640 IR camera and AD7991 ADC
+    #------------------------------------------------------------------------#
+    # - MLX90640: IR thermal camera (32x24 pixels, 8 Hz)
+    # - AD7991: 4-channel 12-bit ADC (CH0=Linpot, CH1-3=Analog inputs)
+    #------------------------------------------------------------------------#
     mlx_enabled = False
     ad7991_enabled = False
     
     # Initialize MLX90640 IR thermal camera
+    #------------------------------------------------------------------------#
     try:    
         mlx = MLX90640(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
         mlx_enabled = True
         print(f"MLX90640 initialized at address 0x{MLX90640_ADDRESS:02X}")
     except Exception as e:
         print(f"MLX90640 not detected: {e}")
+    #------------------------------------------------------------------------#
     
     # Initialize AD7991 ADC
+    #------------------------------------------------------------------------#
     try:
         ad7991 = MAX11617(i2c_handle, AD7991_ADDRESS, AD7991_CHANNEL_COUNT)
         ad7991_enabled = True
         print(f"AD7991 initialized at address 0x{AD7991_ADDRESS:02X}")
     except Exception as e:
         print(f"AD7991 not detected: {e}")
+    #------------------------------------------------------------------------#
     
     def mlx90640_task():
         """Reads MLX90640 IR frames and updates shared memory"""
@@ -204,7 +208,7 @@ def log_process(ir_frame_update, ir_frame_array, test_id_value, avg_temp_value,
     
     # File format: CSV with timestamp, test_id, sensor data
     #------------------------------------------------------------------------#
-    
+
     os.makedirs(LOG_DIRECTORY, exist_ok=True)
 
     file_handle = None
