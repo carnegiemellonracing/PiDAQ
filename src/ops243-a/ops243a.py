@@ -12,7 +12,7 @@
 #   speed = sensor.read_speed()
 
 from OmniPreSense import OPS243
-
+ 
 
 class OPS243A:
     
