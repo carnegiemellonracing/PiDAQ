@@ -1,6 +1,7 @@
 # Updated imports - removed deprecated sensors and CAN bus
 from max11617.max11617 import MAX11617  # Using MAX11617 driver for AD7991 ADC
 from mlx90640.mlx90640 import MLX90640
+from mlx90640_1.mlx90640_1 import MLX90640_1
 
 from multiprocessing import Process, Queue, Value, Array
 from smbus2 import SMBus
@@ -51,7 +52,7 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
         mlx = MLX90640(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
         mlx_enabled = True
     except Exception as e:
-        print("MLX not detected")
+        print("MLX0 not detected")
 
     def mlx90640_task():
         while True:
@@ -82,10 +83,10 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
     ad7991_enabled = False
 
     try:
-        mlx = MLX90640(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
+        mlx = MLX90640_1(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
         mlx_enabled = True
     except Exception as e:
-        print("MLX not detected")
+        print("MLX1 not detected")
 
     try:
         ad7991 = MAX11617(i2c_handle, AD7991_ADDRESS, AD7991_CHANNEL_COUNT)
