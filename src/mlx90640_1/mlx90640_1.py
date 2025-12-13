@@ -13,7 +13,7 @@ class I2CAcknowledgeError(Exception):
 
 class HAL_MLX90640_1:
     def __init__(self, i2c_handle, i2c_addr):
-        self.i2c = i2c_handle
+        self.i2c = SMBus(1)
         self.i2c_addr = i2c_addr
 
     def i2c_read(self, addr, count=2):
@@ -68,6 +68,7 @@ class MLX90640_1:
     LSB_DEGC = 50.0
 
     def __init__(self, i2c_handle, i2c_addr=0x33, frame_rate=2.0):
+        i2c_handle = SMBus(1)
         self.hw = HAL_MLX90640_1(i2c_handle, i2c_addr)
         self.i2c_addr = i2c_addr
         self.calc_params = TCalcParams()
