@@ -8,7 +8,7 @@ from threading import Thread
 from datetime import datetime
 # from random import randint
 
-from Utils.utils import test_id_is_active, extract_test_id
+# from Utils.utils import test_id_is_active, extract_test_id
 
 import os
 
@@ -69,7 +69,7 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
                 for i, value in enumerate(frame):
                     ir_frame_array[i] = value
                 
-                print("i2c0 ADC:", avg_temp)
+                print("i2c0 temp:", avg_temp)
     mlx90640_thread = Thread(target=mlx90640_task)
     
     if mlx_enabled:
@@ -108,7 +108,7 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                 
                 for i, value in enumerate(frame):
                     ir_frame_array[i] = value
-                print("i2c1 ADC:", avg_temp)
+                print("i2c1 temp:", avg_temp)
     def ad7991_task():
         start_time = time.time()
         while True:
@@ -278,9 +278,12 @@ if __name__ == "__main__":
     i2c1_handle = busio.I2C(board.SCL, board.SDA)
 
     # Shared values for inter-process communication
-    avg_temp_value = Value("i", 0)
-    ir_frame_array = Array("i", 32 * 24)
-    ir_frame_update = Value("b", 0)
+    avg_temp0_value = Value("i", 0)
+    avg_temp1_value = Value("i", 0)
+    ir_frame0_array = Array("i", 32 * 24)
+    ir_frame1_array = Array("i", 32 * 24)
+    ir_frame0_update = Value("b", 0)
+    ir_frame1_update = Value("b", 0)
     
     linpot_value = Value("i", 0)
     adc1_value = Value("i", 0)
@@ -296,8 +299,8 @@ if __name__ == "__main__":
     test_id_value = Value("i", 0)
 
     # Create processes
-    i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp_value, ir_frame_update, ir_frame_array, ))
-    i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp_value, ir_frame_update, ir_frame_array, 
+    i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, ))
+    i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, 
                                                       linpot_value, adc1_value, adc2_value,adc3_value, ))
             
     # uart_proc = Process(target=uart_process,
