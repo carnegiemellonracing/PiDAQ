@@ -21,3 +21,7 @@ Modified CAN symbol file bc wanted to merge some msgs (each single message takes
 timeout is needed as it’s basically a limit to how long you want to keep trying until you just return None. That way, if it’s taking too long to grab the data, you can simply give up and return None so that it doesn’t gate others. It’s okay if you’re returning None a lot of the time cuz then you just don’t update the value.
 
 Note that the i2c handle and spi handles are created outside of the class. This is future proofing so that they can still be used by other sensors in the future as if they are created in the class, no-one else can access them.
+
+
+install
+python3 -m pip install pyserial

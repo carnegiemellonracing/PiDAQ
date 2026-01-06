@@ -11,37 +11,25 @@
 #   sensor = OPS243A('/dev/ttyAMA0')
 #   speed = sensor.read_speed()
 
-from OmniPreSense import OPS243
- 
 
 class OPS243A:
+    def __init__(self, uart_serial):
+        self.port = uart_serial
     
-    def __init__(self, uart_port='/dev/ttyAMA0'):
-        """Initialize sensor on specified UART port"""
-        self.sensor = OPS243(port=uart_port)
-    
-    def read_speed(self):
-        """
-        Read speed from sensor
-        Returns: Speed in m/s (float)
-        """
-        return self.sensor.getSpeed()
-    
-    def close(self):
-        """Close the sensor connection"""
-        self.sensor.close()
+    def read_dopplers(self):
+        data = self.port.read(8)
 
 
 if __name__ == "__main__":
     import time
+    # from OmniPreSense import OPS243
+    import serial 
     
-    # Test the sensor
-    sensor = OPS243A('/dev/ttyAMA0')
+    uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
+    sensor = OPS243A(uart0_serial)
     
-    try:
-        while True:
-            speed = sensor.read_speed()
-            print(f"Speed: {speed:.2f} m/s")
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        sensor.close()
+    while True:
+        speed = sensor.read_dopplers()
+        print(f"Speed: {speed:.2f} m/s")
+        time.sleep(0.1)
+

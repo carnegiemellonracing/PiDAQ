@@ -15,6 +15,7 @@ import os
 
 import busio
 import board
+import serial
 
 import time
 
@@ -131,7 +132,22 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
         mlx90640_thread.start()
     if ad7991_enabled:
         ad7991_thread.start()
-        
+
+#TODO: change config.txt make sure uart is enabled
+def uart0_process(uart_serial, doppler_value):
+
+    #TODO: init the ops243a = ops243a(dffsdf)
+
+    def ops243a_task():
+        while True:
+            if uart_serial.in_waiting > 0:
+                #TODO: init the class ride_height_value
+                doppler_value.value = ops243a.read_rideheight()
+
+
+
+
+
 # def uart_process(ride_height_value, doppler_value):
 #     """
 #     UART Process - Handles UART-based sensors
@@ -277,6 +293,7 @@ if __name__ == "__main__":
     # Assigning the I2C buses
     i2c0_handle = SMBus(0)
     i2c1_handle = busio.I2C(board.SCL, board.SDA)
+    uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
 
     # Shared values for inter-process communication
     avg_temp0_value = Value("i", 0)
@@ -303,7 +320,7 @@ if __name__ == "__main__":
     i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, ))
     i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, 
                                                       linpot_value, adc1_value, adc2_value,adc3_value, ))
-            
+    uart0_process = Process(target=uart0_process, args=(uart0_serial, doppler_value))        
     # uart_proc = Process(target=uart_process,
     #                     args=(ride_height_value, doppler_value))
     
