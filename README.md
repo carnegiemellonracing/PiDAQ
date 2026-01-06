@@ -25,3 +25,4 @@ Note that the i2c handle and spi handles are created outside of the class. This 
 
 install
 python3 -m pip install pyserial
+sudo apt install python3-rpi.gpio

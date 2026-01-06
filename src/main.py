@@ -16,6 +16,7 @@ import os
 import busio
 import board
 import serial
+import RPi.GPIO as GPIO
 
 import time
 

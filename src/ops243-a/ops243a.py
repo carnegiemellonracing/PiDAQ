@@ -15,7 +15,16 @@
 class OPS243A:
     def __init__(self, uart_serial):
         self.port = uart_serial
-    
+        GPIO.cleanup() #resets everything
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(26, GPIO.OUT)
+
+        GPIO.output(26, GPIO.HIGH)
+        time.sleep(1)
+        GPIO.output(26, GPIO.LOW)
+        time.sleep(1)
+        GPIO.output(26, GPIO.HIGH)
+
     def read_dopplers(self):
         data = self.port.read(8)
 
@@ -24,6 +33,7 @@ if __name__ == "__main__":
     import time
     # from OmniPreSense import OPS243
     import serial 
+    import RPi.GPIO as GPIO
     
     uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
     sensor = OPS243A(uart0_serial)
