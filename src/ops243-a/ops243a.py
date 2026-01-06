@@ -15,18 +15,19 @@
 class OPS243A:
     def __init__(self, uart_serial):
         self.port = uart_serial
-        GPIO.cleanup() #resets everything
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(26, GPIO.OUT)
+        #GPIO.cleanup() #resets everything
+        #GPIO.setmode(GPIO.BCM)
+        #GPIO.setup(26, GPIO.OUT)
 
-        GPIO.output(26, GPIO.HIGH)
-        time.sleep(1)
-        GPIO.output(26, GPIO.LOW)
-        time.sleep(1)
-        GPIO.output(26, GPIO.HIGH)
+        #GPIO.output(26, GPIO.HIGH)
+        #time.sleep(1)
+        #GPIO.output(26, GPIO.LOW)
+        #time.sleep(1)
+        #GPIO.output(26, GPIO.HIGH)
 
     def read_dopplers(self):
         data = self.port.read(8)
+        return data
 
 
 if __name__ == "__main__":
@@ -38,8 +39,14 @@ if __name__ == "__main__":
     uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
     sensor = OPS243A(uart0_serial)
     
+    buffer = b''
+
     while True:
         speed = sensor.read_dopplers()
-        print(f"Speed: {speed:.2f} m/s")
+        buffer += speed
+        if b'\r\n' in buffer:
+            line, buffer = buffer.split(b'\r\n', 1)
+            value = float(line.decode('utf-8'))
+            print("Speed:", value, "m/s")
         time.sleep(0.1)
 
