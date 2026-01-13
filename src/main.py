@@ -321,9 +321,9 @@ if __name__ == "__main__":
     i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, ))
     i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, 
                                                       linpot_value, adc1_value, adc2_value,adc3_value, ))
-    uart0_process = Process(target=uart0_process, args=(uart0_serial, doppler_value))        
-    # uart_proc = Process(target=uart_process,
-    #                     args=(ride_height_value, doppler_value))
+    # uart0_process = Process(target=uart0_process, args=(uart0_serial, doppler_value))        
+    
+    
     
     # log_proc = Process(target=log_process, 
     #                    args=(ir_frame_update, ir_frame_array, test_id_value, avg_temp_value,
