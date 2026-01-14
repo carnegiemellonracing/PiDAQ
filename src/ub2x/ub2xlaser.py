@@ -1,15 +1,28 @@
 import serial
 import struct
 import time
+import RPi.GPIO as GPIO
+
 
 class UB2X:
     def __init__(self, uart_serial):
         self.port = uart_serial
 
+        # GPIO.cleanup() #resets everything
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(26, GPIO.OUT)
+        GPIO.output(26, GPIO.HIGH)
+
+        self.set_auto_baud = bytes([0x55])
+
+        self.port.write(self.read_cmd)
+
         # Read distance command (Table 6-13)
         self.read_cmd = bytes([
             0xAA, 0x80, 0x00, 0x22, 0xA2
         ])
+
+        
 
     def _checksum(self, data):
         return sum(data) & 0xFF
@@ -20,8 +33,8 @@ class UB2X:
 
         # Read reply (13 bytes)
         reply = self.port.read(13)
-        if len(reply) != 13:
-            raise IOError("Incomplete read reply")
+        # if len(reply) != 13:
+        #     raise IOError("Incomplete read reply")
 
         if reply[0] != 0xAA:
             raise ValueError("Invalid header")
