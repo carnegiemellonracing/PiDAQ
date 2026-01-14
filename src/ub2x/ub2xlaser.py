@@ -15,7 +15,7 @@ class UB2X:
 
         self.set_auto_baud = bytes([0x55])
 
-        self.port.write(self.read_cmd)
+        self.port.write(self.set_auto_baud)
 
         # Read distance command (Table 6-13)
         self.read_cmd = bytes([
@@ -33,17 +33,21 @@ class UB2X:
 
         # Read reply (13 bytes)
         reply = self.port.read(13)
+        print(reply)
         # if len(reply) != 13:
         #     raise IOError("Incomplete read reply")
 
-        if reply[0] != 0xAA:
-            raise ValueError("Invalid header")
+        #if reply[0] != 0xAA:
+        #    raise ValueError("Invalid header")
 
         # Distance bytes 6–9 (big-endian)
-        distance = struct.unpack(">I", reply[6:10])[0]
+        #distance = struct.unpack(">I", reply[6:10])[0]
 
         # Signal quality bytes 10–11
-        sq = struct.unpack(">H", reply[10:12])[0]
+        #sq = struct.unpack(">H", reply[10:12])[0]
+
+        distance = 'ok'
+        sq = 'ok'
 
         return distance, sq
 
