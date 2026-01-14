@@ -41,6 +41,21 @@ class UB2X:
             0x22,  # Register low
             0xA2   # Checksum (from datasheet)
         ])
+        self.turnlaseron = bytearray([
+            0xAA,
+            0x00,
+            0x01,
+            0xBE,
+            0x00,
+            0x01,
+            0x00,
+            0x01
+        ])
+        self.turnlaseron.append(sum(self.turnlaseron) & 0xFF)
+
+        self.port.write(self.turnlaseron)
+
+
 
     def read_rideheight(self):
         # 1. Send read command
@@ -48,9 +63,10 @@ class UB2X:
 
         # 2. Read reply (13 bytes total)
         reply = self.port.read(13)
+        print(reply)
 
-        if len(reply) != 13:
-            raise IOError(f"Incomplete reply: {len(reply)} bytes")
+        #if len(reply) != 13:
+        #    raise IOError(f"Incomplete reply: {len(reply)} bytes")
 
         # 3. Basic frame check
         if reply[0] != 0xAA:
