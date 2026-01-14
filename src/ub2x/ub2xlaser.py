@@ -14,13 +14,35 @@ class UB2X:
         GPIO.output(26, GPIO.HIGH)
 
         self.set_auto_baud = bytes([0x55])
-
         self.port.write(self.set_auto_baud)
 
         # Read distance command (Table 6-13)
         self.read_cmd = bytes([
             0xAA, 0x80, 0x00, 0x22, 0xA2
         ])
+
+        self.get_status = bytes([
+            0xAA, 0x80, 0x00, 0x00, 0x80
+        ])
+
+        self.get_voltage = bytes([
+            0xAA, 0x80, 0x00, 0x06, 0x86
+        ])
+
+        self.read_measure_result = bytes([
+            0x00, 0x80, 0x00, 0x22, 0xA2
+        ])
+        print("hey get status")
+        self.port.write(self.get_status)
+        print(self.port.read(9))
+        print("hey get voltage")
+        self.port.write(self.get_voltage)
+        print(self.port.read(9))
+        print("hey get measure result")
+        self.port.write(self.read_measure_result)
+        print(self.port.read(13))
+
+    
 
         
 
