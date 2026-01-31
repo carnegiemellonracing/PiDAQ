@@ -1,0 +1,35 @@
+from smbus2 import SMBus, i2c_msg
+import struct
+import enum
+from ctypes import *
+import time
+from statistics import median
+from math import fabs
+
+class DIM_PI:
+    def __init__(self, i2c_handle, i2c_addr):
+        self.i2c = i2c_handle
+        self.i2c_addr = i2c_addr
+    
+    def i2c_read(self, addr):
+        #write = i2c_msg.write(self.i2c_addr, [addr_msb, addr_lsb])
+        read = i2c_msg.read(self.i2c_addr, 1)
+        #self.i2c.i2c_rdwr(write, read)
+        return bytes(list(read)), 0
+    
+    
+if __name__ == "__main__":
+    i2c_handle = SMBus(0)
+    i2c_addr = 0x00
+    mlx = DIM_PI(i2c_handle = i2c_handle, i2c_addr= i2c_addr, frame_rate=8.0)
+    
+    while True:
+        
+        start_time = time.time()
+        
+        avg_temp, frame = mlx.read_frame()
+
+        if avg_temp is not None:
+            print(avg_temp)
+            print(list(frame))
+        
