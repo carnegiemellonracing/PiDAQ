@@ -37,7 +37,7 @@ MLX90640_ADDRESS = 0x33
 MLX90640_FRAME_RATE = 8.0
 
 # AD7991 ADC (4-channel 12-bit ADC)
-AD7991_ADDRESS = 0x28  # AD7991-0 address, if -0 then 0x29
+AD7991_ADDRESS = 0x35  # AD7991-0 address, if -0 then 0x29
 AD7991_CHANNEL_COUNT = 4
 
 TIME_1MS = 0.001
@@ -123,6 +123,8 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                 adc3_value.value = ad7991.read_adc()[3]
                 
                 start_time = current_time  
+
+                print(linpot_value.value, adc1_value.value, adc2_value.value, adc3_value.value)
             else:
                 time.sleep(TIME_1MS)
     
