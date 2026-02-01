@@ -39,7 +39,7 @@ class MAX11617:
 
 if __name__ == "__main__":
     i2c = busio.I2C(board.SCL, board.SDA)
-    max11617 = MAX11617(i2c, 0x28, 4)
+    max11617 = MAX11617(i2c, 0x35, 4)
 
     while True:
         print(max11617.read_adc())
