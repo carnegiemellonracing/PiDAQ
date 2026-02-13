@@ -13,9 +13,15 @@ class UB2X:
         GPIO.setup(26, GPIO.OUT)
         GPIO.output(26, GPIO.HIGH)
 
+        time.sleep(0.1)
+        GPIO.output(26, GPIO.LOW)
+
+
         self.set_auto_baud = bytes([0x55])
         self.port.write(self.set_auto_baud)
-
+        # while True:
+        #    self.port.write(0x55)
+        #    print(self.port.read(9))
         # Read distance command (Table 6-13)
         self.read_cmd = bytes([
             0xAA, 0x80, 0x00, 0x22, 0xA2
@@ -32,20 +38,27 @@ class UB2X:
         self.read_measure_result = bytes([
             0x00, 0x80, 0x00, 0x22, 0xA2
         ])
+        self.continuous_auto = bytes([
+            0xAA, 0x00, 0x00, 0x20, 0x00, 0x01, 0x00, 0x04, 0x25])
         print("hey get status")
         self.port.write(self.get_status)
-        print(self.port.read(9))
+        print(self.port.read(100))
         print("hey get voltage")
         self.port.write(self.get_voltage)
-        print(self.port.read(9))
+        print(self.port.read(100))
         print("hey get measure result")
         self.port.write(self.read_measure_result)
-        print(self.port.read(13))
+        print(self.port.read(100))
+        self.port.write(self.continuous_auto)
+        print("hey read continuous")
+        print(self.port.read(100))
 
     
 
-        
-
+        # while (True):
+        #     if self.port.in_waiting:
+        #         data = self.port.read(self.port.in_waiting)
+        #         print(data.hex())
     def _checksum(self, data):
         return sum(data) & 0xFF
 
@@ -102,7 +115,7 @@ class UB2X:
 if __name__ == "__main__":
     uart0_serial = serial.Serial(
         port="/dev/serial0",
-        baudrate=19200,
+        baudrate=115200,
         timeout=3.0
     )
 
