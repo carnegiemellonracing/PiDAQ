@@ -54,18 +54,27 @@ class UB2X:
             print(f"Voltage: incomplete reply ({reply.hex()})")
 
         # Read cached measure result
-        self.port.write(self.read_measure_result)
-        reply = self.port.read(13)
-        if len(reply) >= 12:
-            distance_mm = struct.unpack(">I", reply[6:10])[0]
-            sq = struct.unpack(">H", reply[10:12])[0]
-            print(f"Cached Distance: {distance_mm} mm ({distance_mm / 1000:.3f} m), SQ: {sq}")
-        else:
-            print(f"Measure result: incomplete reply ({reply.hex()})")
+        #self.port.write(self.read_measure_result)
+        #reply = self.port.read(13)
+        #if len(reply) >= 12:
+        #    distance_mm = struct.unpack(">I", reply[6:10])[0]
+        #    sq = struct.unpack(">H", reply[10:12])[0]
+        #    print(f"Cached Distance: {distance_mm} mm ({distance_mm / 1000:.3f} m), SQ: {sq}")
+        #else:
+        #    print(f"Measure result: incomplete reply ({reply.hex()})")
 
         # Start continuous auto measure
         self.port.write(self.continuous_auto)
         print("Continuous auto measure started")
+        while True:
+            reply = self.port.read(13)
+            if len(reply) >= 12:
+                distance_mm = struct.unpack(">I", reply[6:10])[0]
+                sq = struct.unpack(">H", reply[10:12])[0]
+                print(f"Cached Distance: {distance_mm} mm ({distance_mm / 1000:.3f} m), SQ: {sq}")
+            else:
+                print(f"Measure result: incomplete reply ({reply.hex()})")
+            
 
     def _checksum(self, data):
         return sum(data) & 0xFF
@@ -101,13 +110,13 @@ if __name__ == "__main__":
         timeout=3.0
     )
     sensor = UB2X(uart0_serial)
-    sensor.set_laser(True)
+    # sensor.set_laser(True)
     time.sleep(0.2)
 
-    while True:
-        distance_mm, sq = sensor.read_rideheight()
-        if distance_mm is not None:
-            print(f"Distance: {distance_mm} mm ({distance_mm / 1000:.3f} m), SQ: {sq}")
-        else:
-            print("No valid reading")
-        time.sleep(0.1)
+    #while True:
+    #    distance_mm, sq = sensor.read_rideheight()
+   #     if distance_mm is not None:
+    #        print(f"Distance: {distance_mm} mm ({distance_mm / 1000:.3f} m), SQ: {sq}")
+     #   else:
+      #      print("No valid reading")
+       # time.sleep(0.1)
