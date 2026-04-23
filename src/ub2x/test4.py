@@ -114,7 +114,7 @@ if __name__ == "__main__":
     #sensor.set_laser(True)
     time.sleep(0.2)
 
-    sensor.start_continuous_slow()
+    sensor.start_continuous_20hz()
 
     try:
         while True:
