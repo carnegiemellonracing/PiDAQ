@@ -19,6 +19,8 @@ import serial
 import RPi.GPIO as GPIO
 
 import time
+import csv
+import subprocess
 
 from pathlib import Path
 
@@ -43,6 +45,7 @@ MAX11617_CHANNEL_COUNT = 3
 TIME_1MS = 0.001
 
 LOG_DIRECTORY = str(Path(__file__).parent.absolute()) + "/../log/"
+LAST_GOOD_TIME_FILE = "last_good_time.txt"
 
 
 def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
@@ -131,6 +134,94 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
         mlx90640_thread.start()
     if max11617_enabled:
         max11617_thread.start()
+
+def log_process(avg_temp0_value, ir_frame0_update, ir_frame0_array,
+                avg_temp1_value, ir_frame1_update, ir_frame1_array,
+                RL_linpot_value, RR_linpot_value):
+
+    # -----------------------
+    # Time utilities
+    # -----------------------
+    def is_time_synced():
+        try:
+            output = subprocess.check_output(["timedatectl"], text=True)
+            return "System clock synchronized: yes" in output
+        except:
+            return False
+
+    def get_timestamp():
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+
+    def get_safe_start_time():
+        if is_time_synced():
+            now = datetime.now()
+            with open(LAST_GOOD_TIME_FILE, "w") as f:
+                f.write(now.isoformat())
+            return now, True
+
+        if os.path.exists(LAST_GOOD_TIME_FILE):
+            with open(LAST_GOOD_TIME_FILE, "r") as f:
+                last = f.read().strip()
+                return datetime.fromisoformat(last), False
+
+        return datetime.now(), False
+
+
+    # -----------------------
+    # Setup
+    # -----------------------
+    os.makedirs(LOG_DIRECTORY, exist_ok=True)
+
+    file_handle = None
+    writer = None
+    last_update_value = 0
+
+    start_time, rtc_ok = get_safe_start_time()
+    timestamp_label = start_time.strftime("%Y-%m-%d_%H-%M-%S")
+
+    filename = (
+        f"{LOG_DIRECTORY}/{timestamp_label}.csv"
+        if rtc_ok
+        else f"{LOG_DIRECTORY}/NO_RTC_last_{timestamp_label}.csv"
+    )
+
+    file_handle = open(filename, "w", newline="")
+    writer = csv.writer(file_handle)
+
+    # header
+    writer.writerow([
+        "timestamp",
+        "ir_frame0",
+        "ir_frame1",
+        "avg_temp0",
+        "avg_temp1",
+        "RL_linpot",
+        "RR_linpot"
+    ])
+    file_handle.flush()
+
+    # -----------------------
+    # Main loop
+    # -----------------------
+    while True:
+
+        if ir_frame0_update.value != last_update_value:
+
+            writer.writerow([
+                get_timestamp(),
+                list(ir_frame0_array),
+                list(ir_frame1_array),
+                avg_temp0_value.value,
+                avg_temp1_value.value,
+                RL_linpot_value.value,
+                RR_linpot_value.value
+            ])
+
+            file_handle.flush()
+            last_update_value = ir_frame0_update.value
+
+        time.sleep(0.001)
+    
     
 
 # def log_process(ir_frame_update, ir_frame_array, test_id_value, avg_temp_value, 
@@ -224,6 +315,8 @@ if __name__ == "__main__":
     i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, ))
     i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, 
                                                       RL_linpot_value, RR_linpot_value,))
+    log_process = Process(target=log_process, args=(avg_temp0_value, ir_frame0_update, ir_frame0_array, avg_temp1_value, 
+                ir_frame1_update, ir_frame1_array, RL_linpot_value, RR_linpot_value,))
     
     # log_proc = Process(target=log_process, 
     #                    args=(ir_frame_update, ir_frame_array, test_id_value, avg_temp_value,
@@ -237,6 +330,7 @@ if __name__ == "__main__":
     
     i2c0_process.start()
     i2c1_process.start()
+    log_process.start
     
     while True:
         print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ", Linpot:", RL_linpot_value.value, RR_linpot_value.value)
