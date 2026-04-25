@@ -37,8 +37,8 @@ MLX90640_ADDRESS = 0x33
 MLX90640_FRAME_RATE = 8.0
 
 # MAX11617 ADC (4-channel 12-bit ADC)
-MAX11617_ADDRESS = 0x28  # MAX11617-0 address, if -0 then 0x29
-MAX11617_CHANNEL_COUNT = 4
+MAX11617_ADDRESS = 0x35  # MAX11617-0 address, if -0 then 0x29
+MAX11617_CHANNEL_COUNT = 3
 
 TIME_1MS = 0.001
 
@@ -82,7 +82,7 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                  linpot_value, adc1_value, adc2_value, adc3_value):
     
     mlx_enabled = False
-    MAX11617_enabled = False
+    max11617_enabled = False
 
     try:
         mlx = MLX90640_1(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
@@ -118,6 +118,7 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
             current_time = time.time()
             if current_time - start_time > MAX11617_TASK_PERIOD:
                 linpot_value.value, adc1_value.value, adc2_value.value = max11617.read_adc()
+                print(linpot_value.value, adc1_value.value, adc2_value.value)
                 
                 start_time = current_time  
             else:
@@ -336,6 +337,5 @@ if __name__ == "__main__":
     
     while True:
         print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value)
-        print ("Linpot", {adc1_value.value})
     # uart_proc.start()
     # log_proc.start()
