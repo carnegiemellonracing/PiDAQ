@@ -15,6 +15,9 @@ import serial
 import RPi.GPIO as GPIO
 import time
 
+import csv
+import subprocess
+
 from pathlib import Path
 from cedargrove_nau7802 import NAU7802
 
@@ -32,10 +35,6 @@ NAU7802_TASK_PERIOD = 0.1  # 10 Hz read rate for linpots
 # MLX90640 IR thermal camera
 MLX90640_ADDRESS = 0x33
 MLX90640_FRAME_RATE = 8.0
-
-# AD7991 ADC (4-channel 12-bit ADC)
-AD7991_ADDRESS = 0x28  # AD7991-0 address, if -0 then 0x29
-AD7991_CHANNEL_COUNT = 4
 
 # NAU7802 load cell / linpot ADC
 NAU7802_ADDRESS = 0x2A
@@ -306,8 +305,8 @@ def log_process(avg_temp0_value, ir_frame0_update, ir_frame0_array,
                 list(ir_frame1_array),
                 avg_temp0_value.value,
                 avg_temp1_value.value,
-                i2c1_linpot_reading.value,
-                i2c0_linpot_reading.value
+                -i2c1_linpot_reading.value/1000,
+                -i2c0_linpot_reading.value/1000
             ])
 
             file_handle.flush()
