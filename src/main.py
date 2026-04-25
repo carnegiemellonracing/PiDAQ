@@ -37,8 +37,8 @@ MLX90640_ADDRESS = 0x33
 MLX90640_FRAME_RATE = 8.0
 
 # AD7991 ADC (4-channel 12-bit ADC)
-AD7991_ADDRESS = 0x28  # AD7991-0 address, if -0 then 0x29
-AD7991_CHANNEL_COUNT = 4
+AD7991_ADDRESS = 0x35  # AD7991-0 address, if -0 then 0x29
+AD7991_CHANNEL_COUNT = 3
 
 TIME_1MS = 0.001
 
@@ -72,14 +72,14 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
                 for i, value in enumerate(frame):
                     ir_frame_array[i] = value
                 
-                print("i2c0 temp:", avg_temp)
+                #print("i2c0 temp:", avg_temp)
     mlx90640_thread = Thread(target=mlx90640_task)
     
     if mlx_enabled:
         mlx90640_thread.start()
 
 def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
-                 linpot_value, adc1_value, adc2_value, adc3_value):
+                 linpot_value, adc1_value):
     
     mlx_enabled = False
     ad7991_enabled = False
@@ -111,7 +111,7 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                 
                 for i, value in enumerate(frame):
                     ir_frame_array[i] = value
-                print("i2c1 temp:", avg_temp)
+                #print("i2c1 temp:", avg_temp)
     def ad7991_task():
         start_time = time.time()
         while True:
@@ -119,9 +119,8 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
             if current_time - start_time > AD7991_TASK_PERIOD:
                 linpot_value.value = ad7991.read_adc()[0]
                 adc1_value.value = ad7991.read_adc()[1]
-                adc2_value.value = ad7991.read_adc()[2]
-                adc3_value.value = ad7991.read_adc()[3]
-                
+
+                #print(linpot_value.value, adc1_value.value)
                 start_time = current_time  
             else:
                 time.sleep(TIME_1MS)
@@ -306,8 +305,6 @@ if __name__ == "__main__":
     
     linpot_value = Value("i", 0)
     adc1_value = Value("i", 0)
-    adc2_value = Value("i", 0)
-    adc3_value = Value("i", 0)
     
     # # UART sensor data
     # ride_height_value = Value("i", 0)  # UC5B20402 ultrasonic sensor
@@ -320,7 +317,7 @@ if __name__ == "__main__":
     # Create processes
     i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, ))
     i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, 
-                                                      linpot_value, adc1_value, adc2_value,adc3_value, ))
+                                                      linpot_value, adc1_value,))
     # uart0_process = Process(target=uart0_process, args=(uart0_serial, doppler_value))        
     
     
@@ -339,6 +336,6 @@ if __name__ == "__main__":
     i2c1_process.start()
     
     while True:
-        print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value)
+        print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ", Linpot:", linpot_value.value, adc1_value.value)
     # uart_proc.start()
     # log_proc.start()
