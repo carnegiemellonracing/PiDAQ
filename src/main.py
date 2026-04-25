@@ -1,5 +1,5 @@
 # Updated imports - removed deprecated sensors and CAN bus
-from max11617.max11617 import MAX11617  # Using MAX11617 driver for AD7991 ADC
+from max11617.max11617 import MAX11617  # Using MAX11617 driver for MAX11617 ADC
 from mlx90640.mlx90640 import MLX90640
 from mlx90640_1.mlx90640_1 import MLX90640_1
 
@@ -30,15 +30,15 @@ else:
 
 # Task timing constants
 MLX90640_TASK_PERIOD = 0.125
-AD7991_TASK_PERIOD = 0.005
+MAX11617_TASK_PERIOD = 0.005
 
 # MLX90640 IR thermal camera
 MLX90640_ADDRESS = 0x33
 MLX90640_FRAME_RATE = 8.0
 
-# AD7991 ADC (4-channel 12-bit ADC)
-AD7991_ADDRESS = 0x28  # AD7991-0 address, if -0 then 0x29
-AD7991_CHANNEL_COUNT = 4
+# MAX11617 ADC (4-channel 12-bit ADC)
+MAX11617_ADDRESS = 0x28  # MAX11617-0 address, if -0 then 0x29
+MAX11617_CHANNEL_COUNT = 4
 
 TIME_1MS = 0.001
 
@@ -82,7 +82,7 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                  linpot_value, adc1_value, adc2_value, adc3_value):
     
     mlx_enabled = False
-    ad7991_enabled = False
+    MAX11617_enabled = False
 
     try:
         mlx = MLX90640_1(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
@@ -91,10 +91,10 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
         print("MLX1 not detected")
 
     try:
-        ad7991 = MAX11617(i2c_handle, AD7991_ADDRESS, AD7991_CHANNEL_COUNT)
-        ad7991_enabled = True
+        max11617  = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)
+        max11617_enabled = True
     except Exception as e:
-        print(f"AD7991 (ADC) not detected")
+        print(f"MAX11617 (ADC) not detected")
 
     # TODO: take this func outta this func so that the two processes can share code
     def mlx90640_task():
@@ -112,27 +112,24 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                 for i, value in enumerate(frame):
                     ir_frame_array[i] = value
                 print("i2c1 temp:", avg_temp)
-    def ad7991_task():
+    def max11617_task():
         start_time = time.time()
         while True:
             current_time = time.time()
-            if current_time - start_time > AD7991_TASK_PERIOD:
-                linpot_value.value = ad7991.read_adc()[0]
-                adc1_value.value = ad7991.read_adc()[1]
-                adc2_value.value = ad7991.read_adc()[2]
-                adc3_value.value = ad7991.read_adc()[3]
+            if current_time - start_time > MAX11617_TASK_PERIOD:
+                linpot_value.value, adc1_value.value, adc2_value.value = max11617.read_adc()
                 
                 start_time = current_time  
             else:
                 time.sleep(TIME_1MS)
     
     mlx90640_thread = Thread(target=mlx90640_task)
-    ad7991_thread = Thread(target=ad7991_task)
+    max11617_thread = Thread(target=max11617_task)
     
     if mlx_enabled:
         mlx90640_thread.start()
-    if ad7991_enabled:
-        ad7991_thread.start()
+    if max11617_enabled:
+        max11617_thread.start()
 
 #TODO: change config.txt make sure uart is enabled
 def uart0_process(uart_serial, doppler_value):
@@ -231,7 +228,7 @@ def uart0_process(uart_serial, doppler_value):
 #     #------------------------------------------------------------------------#
 #     # Logs:
 #     # - MLX90640: IR frame (768 pixels) + average temperature
-#     # - AD7991: 4 ADC channels (linpot, adc1, adc2, adc3)
+#     # - MAX11617: 4 ADC channels (linpot, adc1, adc2, adc3)
 #     # - UC5B20402: Ride height (ultrasonic distance)
 #     # - OPS243-A: Doppler radar (velocity/speed)
     
@@ -307,7 +304,6 @@ if __name__ == "__main__":
     linpot_value = Value("i", 0)
     adc1_value = Value("i", 0)
     adc2_value = Value("i", 0)
-    adc3_value = Value("i", 0)
     
     # # UART sensor data
     # ride_height_value = Value("i", 0)  # UC5B20402 ultrasonic sensor
@@ -340,5 +336,6 @@ if __name__ == "__main__":
     
     while True:
         print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value)
+        print ("Linpot", {adc1_value.value})
     # uart_proc.start()
     # log_proc.start()
