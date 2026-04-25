@@ -47,8 +47,10 @@ TIME_1MS = 0.001
 LOG_DIRECTORY = str(Path(__file__).parent.absolute()) + "/../log/"
 
 
-def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array, linpot_reading):
+def i2c0_process(avg_temp_value, ir_frame_update, ir_frame_array, linpot_reading):
     #TODO: RTC code
+
+    i2c_handle = busio.I2C(board.SCL, board.SDA)
 
     mlx_enabled = False
     nau_enabled = False
@@ -107,7 +109,9 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array, li
     if nau_enabled:
         nau_thread.start()
 
-def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
+def i2c1_process(avg_temp_value, ir_frame_update, ir_frame_array):
+
+    i2c_handle = busio.I2C(board.SCL, board.SDA)
     
     mlx_enabled = False
     ad7991_enabled = False
@@ -320,8 +324,9 @@ def uart0_process(uart_serial, doppler_value):
 
 if __name__ == "__main__":
     # Assigning the I2C buses
-    i2c0_handle = SMBus(0)
-    i2c1_handle = busio.I2C(board.SCL, board.SDA)
+    # i2c0_handle = SMBus(0)
+    #i2c0_handle = busio.I2C(board.D1, board.D0)
+    #i2c1_handle = busio.I2C(board.SCL, board.SDA)
     uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
 
     # Shared values for inter-process communication
@@ -346,8 +351,8 @@ if __name__ == "__main__":
     test_id_value = Value("i", 0)
 
     # Create processes
-    i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, rl_linpot_reading, ))
-    i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, ))
+    i2c0_process = Process(target=i2c0_process, args=(avg_temp0_value, ir_frame0_update, ir_frame0_array, rl_linpot_reading, ))
+    i2c1_process = Process(target=i2c1_process, args=(avg_temp1_value, ir_frame1_update, ir_frame1_array, ))
     # uart0_process = Process(target=uart0_process, args=(uart0_serial, doppler_value))        
     
     
@@ -365,7 +370,7 @@ if __name__ == "__main__":
     i2c0_process.start()
     i2c1_process.start()
     
-    while True:
-        print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ",Linpot:", rl_linpot_reading.value)
+    #while True:
+        #print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ",Linpot:", rl_linpot_reading.value)
     # uart_proc.start()
     # log_proc.start()
