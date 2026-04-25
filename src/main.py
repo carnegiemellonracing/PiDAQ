@@ -30,15 +30,15 @@ else:
 
 # Task timing constants
 MLX90640_TASK_PERIOD = 0.125
-AD7991_TASK_PERIOD = 0.005
+MAX11617_TASK_PERIOD = 0.005
 
 # MLX90640 IR thermal camera
 MLX90640_ADDRESS = 0x33
 MLX90640_FRAME_RATE = 8.0
 
-# AD7991 ADC (4-channel 12-bit ADC)
-AD7991_ADDRESS = 0x35  # AD7991-0 address, if -0 then 0x29
-AD7991_CHANNEL_COUNT = 3
+# MAX11617 ADC
+MAX11617_ADDRESS = 0x35
+MAX11617_CHANNEL_COUNT = 3
 
 TIME_1MS = 0.001
 
@@ -79,10 +79,10 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
         mlx90640_thread.start()
 
 def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
-                 linpot_value, adc1_value):
+                 RL_linpot_value, RR_linpot_value):
     
     mlx_enabled = False
-    ad7991_enabled = False
+    max11617_enabled = False
 
     try:
         mlx = MLX90640_1(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
@@ -91,10 +91,10 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
         print("MLX1 not detected")
 
     try:
-        ad7991 = MAX11617(i2c_handle, AD7991_ADDRESS, AD7991_CHANNEL_COUNT)
-        ad7991_enabled = True
+        max11617 = MAX11617(i2c_handle, MAX11617_ADDRESS, MAX11617_CHANNEL_COUNT)
+        max11617_enabled = True
     except Exception as e:
-        print(f"AD7991 (ADC) not detected")
+        print(f"MAX11617 (ADC) not detected")
 
     # TODO: take this func outta this func so that the two processes can share code
     def mlx90640_task():
@@ -112,115 +112,26 @@ def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
                 for i, value in enumerate(frame):
                     ir_frame_array[i] = value
                 #print("i2c1 temp:", avg_temp)
-    def ad7991_task():
+    def max11617_task():
         start_time = time.time()
         while True:
             current_time = time.time()
-            if current_time - start_time > AD7991_TASK_PERIOD:
-                linpot_value.value = ad7991.read_adc()[0]
-                adc1_value.value = ad7991.read_adc()[1]
+            if current_time - start_time > MAX11617_TASK_PERIOD:
+                RR_linpot_value.value = max11617.read_adc()[0]
+                RL_linpot_value.value = max11617.read_adc()[1]
 
-                #print(linpot_value.value, adc1_value.value)
                 start_time = current_time  
             else:
                 time.sleep(TIME_1MS)
     
     mlx90640_thread = Thread(target=mlx90640_task)
-    ad7991_thread = Thread(target=ad7991_task)
+    max11617_thread = Thread(target=max11617_task)
     
     if mlx_enabled:
         mlx90640_thread.start()
-    if ad7991_enabled:
-        ad7991_thread.start()
-
-#TODO: change config.txt make sure uart is enabled
-def uart0_process(uart_serial, doppler_value):
-
-    #TODO: init the ops243a = ops243a(dffsdf)
-
-    def ops243a_task():
-        while True:
-            if uart_serial.in_waiting > 0:
-                #TODO: init the class ride_height_value
-                doppler_value.value = ops243a.read_rideheight()
-
-
-
-
-
-# def uart_process(ride_height_value, doppler_value):
-#     """
-#     UART Process - Handles UART-based sensors
-#     - UC5B20402: Ultrasonic ride height sensor (Software UART)
-#     - OPS243-A: Doppler radar sensor (Pi UART)
+    if max11617_enabled:
+        max11617_thread.start()
     
-#     TODO: Implement sensor initialization and reading
-#     """
-#     ride_height_enabled = False
-#     doppler_enabled = False
-    
-#     # TODO: Initialize UC5B20402 ride height sensor
-#     # try:
-#     #     ride_height_sensor = UC5B20402(uart_port=..., baudrate=...)
-#     #     ride_height_enabled = True
-#     #     print("UC5B20402 ride height sensor initialized")
-#     # except Exception as e:
-#     #     print(f"UC5B20402 not detected: {e}")
-    
-#     # Initialize OPS243-A doppler sensor (uncomment when ready)
-#     # try:
-#     #     from ops243a.ops243a import OPS243A
-#     #     doppler_sensor = OPS243A('/dev/ttyAMA0')
-#     #     doppler_enabled = True
-#     #     print("OPS243-A doppler sensor initialized")
-#     # except Exception as e:
-#     #     print(f"OPS243-A not detected: {e}")
-    
-#     def ride_height_task():
-#         """Reads ride height sensor at specified rate"""
-#         RIDE_HEIGHT_TASK_PERIOD = 0.02  # 50 Hz
-#         start_time = time.time()
-#         while True:
-#             current_time = time.time()
-#             if current_time - start_time > RIDE_HEIGHT_TASK_PERIOD:
-#                 # TODO: Read ride height sensor
-#                 # ride_height_value.value = ride_height_sensor.read()
-                
-#                 start_time = current_time
-#             else:
-#                 time.sleep(TIME_1MS)
-    
-#     def doppler_task():
-#         """Reads doppler sensor at 100 Hz"""
-#         DOPPLER_TASK_PERIOD = 0.01  # 100 Hz
-#         start_time = time.time()
-#         while True:
-#             current_time = time.time()
-#             if current_time - start_time > DOPPLER_TASK_PERIOD:
-#                 # Read speed in m/s and convert to integer (cm/s * 100)
-#                 speed = doppler_sensor.read_speed()
-#                 doppler_value.value = int(speed * 100)
-                
-#                 start_time = current_time
-#             else:
-#                 time.sleep(TIME_1MS)
-    
-#     # TODO: Uncomment when sensors are implemented
-#     # ride_height_thread = Thread(target=ride_height_task)
-#     # doppler_thread = Thread(target=doppler_task)
-    
-#     # if ride_height_enabled:
-#     #     ride_height_thread.start()
-    
-#     # if doppler_enabled:
-#     #     doppler_thread.start()
-    
-#     # Placeholder - keep process alive
-#     while True:
-#         time.sleep(1)
-
-
-
 
 # def log_process(ir_frame_update, ir_frame_array, test_id_value, avg_temp_value, 
 #                 linpot_value, adc1_value, adc2_value, adc3_value, 
@@ -293,7 +204,6 @@ if __name__ == "__main__":
     # Assigning the I2C buses
     i2c0_handle = SMBus(0)
     i2c1_handle = busio.I2C(board.SCL, board.SDA)
-    # uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
 
     # Shared values for inter-process communication
     avg_temp0_value = Value("i", 0)
@@ -303,12 +213,8 @@ if __name__ == "__main__":
     ir_frame0_update = Value("b", 0)
     ir_frame1_update = Value("b", 0)
     
-    linpot_value = Value("i", 0)
-    adc1_value = Value("i", 0)
-    
-    # # UART sensor data
-    # ride_height_value = Value("i", 0)  # UC5B20402 ultrasonic sensor
-    # doppler_value = Value("i", 0)      # OPS243-A radar sensor
+    RL_linpot_value = Value("i", 0)
+    RR_linpot_value = Value("i", 0)
     
     # Test ID control (TODO: implement control mechanism - button/GPIO/network)
     # Previously received via CAN (0x777), now needs alternative input method
@@ -317,10 +223,7 @@ if __name__ == "__main__":
     # Create processes
     i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, ))
     i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, 
-                                                      linpot_value, adc1_value,))
-    # uart0_process = Process(target=uart0_process, args=(uart0_serial, doppler_value))        
-    
-    
+                                                      RL_linpot_value, RR_linpot_value,))
     
     # log_proc = Process(target=log_process, 
     #                    args=(ir_frame_update, ir_frame_array, test_id_value, avg_temp_value,
@@ -336,6 +239,5 @@ if __name__ == "__main__":
     i2c1_process.start()
     
     while True:
-        print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ", Linpot:", linpot_value.value, adc1_value.value)
-    # uart_proc.start()
+        print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ", Linpot:", RL_linpot_value.value, RR_linpot_value.value)
     # log_proc.start()
