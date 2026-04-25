@@ -22,6 +22,8 @@ import time
 
 from pathlib import Path
 
+from cedargrove_nau7802 import NAU7802
+
 # TODO: change way of doing this
 if "DAQ_PI_ID" in os.environ:
     DAQ_PI_ID = int(os.getenv("DAQ_PI_ID"))
@@ -45,16 +47,28 @@ TIME_1MS = 0.001
 LOG_DIRECTORY = str(Path(__file__).parent.absolute()) + "/../log/"
 
 
-def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
+def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array, linpot_reading):
     #TODO: RTC code
 
     mlx_enabled = False
+    nau_enabled = False
 
     try:
         mlx = MLX90640(i2c_handle, i2c_addr=MLX90640_ADDRESS, frame_rate=MLX90640_FRAME_RATE)
         mlx_enabled = True
     except Exception as e:
         print("MLX0 not detected")
+
+    try:
+        adc = NAU7802(i2c_handle, address=0x2A, active_channels=1)
+        adc.enable(True)
+        time.sleep(0.1) #ALLOW POWER-UP
+
+        adc.channel = 1
+        adc.gain = 1
+    except Exception as e:
+        print("NAU not detexted")
+        
 
     def mlx90640_task():
         while True:
@@ -73,13 +87,27 @@ def i2c0_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
                     ir_frame_array[i] = value
                 
                 print("i2c0 temp:", avg_temp)
+
+    def nau_task():
+        if adc is None:
+            return None
+        while not adc.available():
+            pass
+
+        voltage_uv = (adc.read() / 16777215)*3300000
+        linpot_travel_um = (voltage_uv - 7230) / -96.1
+        linpot_reading = linpot_travel_um / 1000
+        print("AHHHHHHHHHHHHHHHHHHH", linpot_reading)
+        
     mlx90640_thread = Thread(target=mlx90640_task)
+    nau_thread = Thread(target=nau_task)
     
     if mlx_enabled:
         mlx90640_thread.start()
+    if nau_enabled:
+        nau_thread.start()
 
-def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array,
-                 linpot_value, adc1_value, adc2_value, adc3_value):
+def i2c1_process(i2c_handle, avg_temp_value, ir_frame_update, ir_frame_array):
     
     mlx_enabled = False
     ad7991_enabled = False
@@ -304,10 +332,10 @@ if __name__ == "__main__":
     ir_frame0_update = Value("b", 0)
     ir_frame1_update = Value("b", 0)
     
-    linpot_value = Value("i", 0)
-    adc1_value = Value("i", 0)
-    adc2_value = Value("i", 0)
-    adc3_value = Value("i", 0)
+    rl_linpot_reading = Value("i", 0)
+    # adc1_value = Value("i", 0)
+    # adc2_value = Value("i", 0)
+    # adc3_value = Value("i", 0)
     
     # # UART sensor data
     # ride_height_value = Value("i", 0)  # UC5B20402 ultrasonic sensor
@@ -318,9 +346,8 @@ if __name__ == "__main__":
     test_id_value = Value("i", 0)
 
     # Create processes
-    i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, ))
-    i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, 
-                                                      linpot_value, adc1_value, adc2_value,adc3_value, ))
+    i2c0_process = Process(target=i2c0_process, args=(i2c0_handle, avg_temp0_value, ir_frame0_update, ir_frame0_array, rl_linpot_reading, ))
+    i2c1_process = Process(target=i2c1_process, args=(i2c1_handle, avg_temp1_value, ir_frame1_update, ir_frame1_array, ))
     # uart0_process = Process(target=uart0_process, args=(uart0_serial, doppler_value))        
     
     
@@ -339,6 +366,6 @@ if __name__ == "__main__":
     i2c1_process.start()
     
     while True:
-        print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value)
+        print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ",Linpot:", rl_linpot_reading.value)
     # uart_proc.start()
     # log_proc.start()
