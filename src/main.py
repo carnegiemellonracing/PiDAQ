@@ -330,7 +330,7 @@ if __name__ == "__main__":
     
     i2c0_process.start()
     i2c1_process.start()
-    log_process.start
+    log_process.start()
     
     while True:
         print(f"MAIN LOOP: Temp 0:", {avg_temp0_value.value},", Temp 1:", avg_temp1_value.value, ", Linpot:", RL_linpot_value.value, RR_linpot_value.value)
