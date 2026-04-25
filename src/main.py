@@ -294,7 +294,7 @@ if __name__ == "__main__":
     # Assigning the I2C buses
     i2c0_handle = SMBus(0)
     i2c1_handle = busio.I2C(board.SCL, board.SDA)
-    uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
+    # uart0_serial = serial.Serial(port="/dev/serial0", baudrate=19200, timeout=3.0)
 
     # Shared values for inter-process communication
     avg_temp0_value = Value("i", 0)
