@@ -43,6 +43,7 @@ NAU7802_ADDRESS = 0x2A
 TIME_1MS = 0.001
 
 LOG_DIRECTORY = str(Path(__file__).parent.absolute()) + "/../log/"
+LAST_GOOD_TIME_FILE = "last_good_time.txt"
 
 
 # --- NAU7802 helper functions (from linpot test script) ---
@@ -226,6 +227,97 @@ def i2c1_process(smbus_handle, busio_handle, avg_temp_value, ir_frame_update, ir
     while True:
         time.sleep(1)
 
+
+def log_process(avg_temp0_value, ir_frame0_update, ir_frame0_array,
+                avg_temp1_value, ir_frame1_update, ir_frame1_array,
+                i2c0_linpot_reading, i2c1_linpot_reading):
+
+    # -----------------------
+    # Time utilities
+    # -----------------------
+    def is_time_synced():
+        try:
+            output = subprocess.check_output(["timedatectl"], text=True)
+            return "System clock synchronized: yes" in output
+        except:
+            return False
+
+    def get_timestamp():
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+
+    def get_safe_start_time():
+        if is_time_synced():
+            now = datetime.now()
+            with open(LAST_GOOD_TIME_FILE, "w") as f:
+                f.write(now.isoformat())
+            return now, True
+
+        if os.path.exists(LAST_GOOD_TIME_FILE):
+            with open(LAST_GOOD_TIME_FILE, "r") as f:
+                last = f.read().strip()
+                return datetime.fromisoformat(last), False
+
+        return datetime.now(), False
+
+
+    # -----------------------
+    # Setup
+    # -----------------------
+    os.makedirs(LOG_DIRECTORY, exist_ok=True)
+
+    file_handle = None
+    writer = None
+    last_update_value = 0
+
+    start_time, rtc_ok = get_safe_start_time()
+    timestamp_label = start_time.strftime("%Y-%m-%d_%H-%M-%S")
+
+    filename = (
+        f"{LOG_DIRECTORY}/{timestamp_label}.csv"
+        if rtc_ok
+        else f"{LOG_DIRECTORY}/NO_RTC_last_{timestamp_label}.csv"
+    )
+
+    file_handle = open(filename, "w", newline="")
+    writer = csv.writer(file_handle)
+
+    # header
+    writer.writerow([
+        "timestamp",
+        "ir_frame0",
+        "ir_frame1",
+        "avg_temp0",
+        "avg_temp1",
+        "FL_linpot",
+        "FR_linpot"
+    ])
+    file_handle.flush()
+
+    # -----------------------
+    # Main loop
+    # -----------------------
+    while True:
+
+        if ir_frame0_update.value != last_update_value:
+
+            writer.writerow([
+                get_timestamp(),
+                list(ir_frame0_array),
+                list(ir_frame1_array),
+                avg_temp0_value.value,
+                avg_temp1_value.value,
+                i2c1_linpot_reading.value,
+                i2c0_linpot_reading.value
+            ])
+
+            file_handle.flush()
+            last_update_value = ir_frame0_update.value
+
+        time.sleep(0.001)
+    
+    
+
+
 if __name__ == "__main__":
     # --- Init I2C buses ---
     # Each bus needs TWO handles:
@@ -271,6 +363,9 @@ if __name__ == "__main__":
         args=(i2c1_smbus, i2c1_busio, avg_temp1_value, ir_frame1_update, ir_frame1_array, i2c1_linpot_reading)
     )
 
+    log_process = Process(target=log_process, args=(avg_temp0_value, ir_frame0_update, ir_frame0_array, avg_temp1_value, 
+                ir_frame1_update, ir_frame1_array, i2c0_linpot_reading, i2c1_linpot_reading,))
+
     # Start all processes
     print("Starting CMR Data Acquisition System...")
     print(f"DAQ Pi ID: {DAQ_PI_ID}")
@@ -281,8 +376,9 @@ if __name__ == "__main__":
         print("I2C0 process skipped (bus not available)")
 
     i2c1_proc.start()
+    log_process.start()
 
     while True:
-        i2c0_mm = i2c0_linpot_reading.value / 1000.0
-        i2c1_mm = i2c1_linpot_reading.value / 1000.0
+        i2c0_mm = -i2c0_linpot_reading.value / 1000.0
+        i2c1_mm = -i2c1_linpot_reading.value / 1000.0
         print(f"MAIN LOOP: Temp0: {avg_temp0_value.value}, Temp1: {avg_temp1_value.value}, Linpot I2C0: {i2c0_mm:.2f} mm, Linpot I2C1: {i2c1_mm:.2f} mm")
